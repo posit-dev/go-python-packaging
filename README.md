@@ -12,7 +12,7 @@ Part of [RFD 0001 — Native Go PyPI Dependency Resolution](https://github.com/r
 
 | Package | Scope |
 |---|---|
-| `version/` | PEP 440 versions and specifiers *(added by migration #18629)* |
+| [`version/`](https://github.com/rstudio/go-pep440-version) | PEP 440 versions and specifiers |
 | `requirement/` | PEP 508 dependency specifiers |
 | `marker/` | PEP 508 environment markers |
 | `extras/` | PEP 685 extra-name normalization |

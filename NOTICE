@@ -9,3 +9,7 @@ This product's design is informed by the Astral `uv` project
 PEP 440 and PEP 508. No source from those projects is incorporated at this
 time; attribution for any incorporated material is added when that material
 lands.
+
+The version/ package is derived from rstudio/go-pep440-version, itself a fork of
+aquasecurity/go-pep440-version (https://github.com/aquasecurity/go-pep440-version),
+licensed under the Apache License, Version 2.0.

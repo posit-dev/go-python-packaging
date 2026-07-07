@@ -64,7 +64,7 @@ func findDistributions(dists []string) ([]string, error) {
 func makePackage(filename string, signatures map[string]string) (*types.PackageFile, error) {
 	packageFile, err := packages.NewPackageFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse %s, path may not point to a valid Python package: %v\n", filename, err)
+		return nil, fmt.Errorf("unable to parse %s, path may not point to a valid Python package: %v", filename, err)
 	}
 
 	signedName := packageFile.SignedBaseFilename
@@ -77,7 +77,7 @@ func makePackage(filename string, signatures map[string]string) (*types.PackageF
 
 	_, err = packages.GetFileSize(packageFile.Filename)
 	if err != nil {
-		return nil, fmt.Errorf("%s is not a real file\n", packageFile.Filename)
+		return nil, fmt.Errorf("%s is not a real file", packageFile.Filename)
 	}
 	return packageFile, nil
 }
@@ -85,7 +85,7 @@ func makePackage(filename string, signatures map[string]string) (*types.PackageF
 func parse(dists []string) ([]*types.PackageFile, error) {
 	dists, err := findDistributions(dists)
 	if err != nil {
-		return nil, fmt.Errorf("error finding distributions: %v\n", err)
+		return nil, fmt.Errorf("error finding distributions: %v", err)
 	}
 
 	// Initialize maps for signatures and a slice for distributions
@@ -121,7 +121,7 @@ func Parse(paths ...string) ([]*types.PackageFile, error) {
 		info, err := os.Stat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return nil, fmt.Errorf("%s does not exist: %v\n", path, err)
+				return nil, fmt.Errorf("%s does not exist: %v", path, err)
 			}
 			return nil, err
 		}

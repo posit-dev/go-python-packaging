@@ -234,7 +234,7 @@ func (bd *BaseDistribution) Parse(data []byte) error {
 				}
 			} else if headerValues[0] != "UNKNOWN" {
 				// Manipulate the keywords so there are spaces in between to match Twine output
-				if headerAttr.AttrName == "keywords"{
+				if headerAttr.AttrName == "keywords" {
 					headerValues[0] = strings.Join(strings.Split(headerValues[0], ","), ", ")
 				}
 
@@ -249,7 +249,7 @@ func (bd *BaseDistribution) Parse(data []byte) error {
 
 	body, err := io.ReadAll(msg.Body)
 	if err != nil {
-		return fmt.Errorf("error reading body: %v\n", err)
+		return fmt.Errorf("error reading body: %v", err)
 
 	}
 	if body != nil {

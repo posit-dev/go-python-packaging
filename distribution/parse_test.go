@@ -366,11 +366,12 @@ func signedString(value bool) string {
 
 // formatString returns a string for unit test names
 func formatString(value string) string {
-	if value == ".gz" {
+	switch value {
+	case ".gz":
 		return "tarball"
-	} else if value == ".whl" {
+	case ".whl":
 		return "wheel"
-	} else {
+	default:
 		return ""
 	}
 }

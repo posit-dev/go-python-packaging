@@ -1,0 +1,11 @@
+go-python-packaging
+Copyright 2026 Posit Software, PBC
+
+This product is licensed under the Apache License, Version 2.0, or the MIT
+license, at your option. See LICENSE-APACHE and LICENSE-MIT.
+
+This product's design is informed by the Astral `uv` project
+(https://github.com/astral-sh/uv) and by konstin's Rust implementations of
+PEP 440 and PEP 508. No source from those projects is incorporated at this
+time; attribution for any incorporated material is added when that material
+lands.

@@ -77,7 +77,7 @@ func NewSpecifiersWithSanitizer(v string, sanitizer func(string) string, opts ..
 // NewRSpecifiers parses a given specifier and returns a new instance of Specifiers intended for
 // working with R package versions.
 func NewRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOption) (Specifiers, error) {
-	return newRSpecifiers(v, func(s string) string { return s }, opts...)
+	return newRSpecifiers(v, sanitizer, opts...)
 }
 
 // NewSpecifiers parses a given specifier and returns a new instance of Specifiers
@@ -313,7 +313,7 @@ func padVersion(left, right []string) ([]string, []string) {
 
 	// Get the rest of our versions
 	leftRest := left[len(leftRelease):]
-	rightRest := left[len(rightRelease):]
+	rightRest := right[len(rightRelease):]
 
 	for i := 0; i < len(leftRelease)-len(rightRelease); i++ {
 		rightRelease = append(rightRelease, "0")

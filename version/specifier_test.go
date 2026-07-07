@@ -4,6 +4,7 @@ package version
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -420,6 +421,47 @@ func TestVersion_Check(t *testing.T) {
 			assert.Equal(t, tt.want, c.Check(v))
 		})
 	}
+}
+
+// TestPadVersion_RightRestDerivesFromRight is a regression test for a bug where
+// padVersion sliced left twice instead of slicing right for the "rest" of the
+// right-hand version, so the returned right-hand segments were built from
+// leftover pieces of the left-hand version instead of the right-hand version.
+func TestPadVersion_RightRestDerivesFromRight(t *testing.T) {
+	// left's release segment ("2","0") is longer than right's ("3"), and each
+	// side has a distinct, differently-shaped non-numeric "rest" suffix, so a
+	// padVersion that mixes up which side the rest comes from is easy to spot.
+	left := []string{"2", "0", "rc1"}
+	right := []string{"3", "x"}
+
+	_, gotRight := padVersion(left, right)
+
+	// The right-hand rest must come from right (["x"]), not left (["rc1"]).
+	want := []string{"3", "0", "x"}
+	assert.Equal(t, want, gotRight)
+}
+
+// TestNewRSpecifiers_UsesProvidedSanitizer is a regression test for a bug where
+// NewRSpecifiers ignored the caller-supplied sanitizer and always forwarded an
+// identity function to newRSpecifiers instead.
+func TestNewRSpecifiers_UsesProvidedSanitizer(t *testing.T) {
+	// A sanitizer that rewrites "9" digits to "1" digits, simulating a caller
+	// normalizing a non-standard version token before PEP 440 parsing.
+	sanitizer := func(s string) string {
+		return strings.ReplaceAll(s, "9", "1")
+	}
+
+	specs, err := NewRSpecifiers("==9.0.0", sanitizer)
+	require.NoError(t, err)
+
+	v, err := Parse("1.0.0")
+	require.NoError(t, err)
+
+	// If the sanitizer is honored, "==9.0.0" is rewritten to "==1.0.0" before
+	// being parsed, so 1.0.0 satisfies it. If the sanitizer is ignored (as with
+	// the identity-forwarding bug), the specifier stays "==9.0.0" and this
+	// version does not satisfy it.
+	assert.True(t, specs.Check(v))
 }
 
 func TestVersion_CheckWithPreRelease(t *testing.T) {

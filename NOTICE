@@ -17,3 +17,11 @@ licensed under the Apache License, Version 2.0.
 The distribution/ package is ported from rstudio/python-distribution-parser
 (https://github.com/rstudio/python-distribution-parser), Copyright (c) 2024
 Posit Software, PBC, originally MIT-licensed.
+
+The tags/ package adapts platform-compatibility-tag algorithms (manylinux and
+musllinux glibc/musl floor tables, macOS format lists, tag ordering) from
+pypa/packaging (https://github.com/pypa/packaging), specifically
+packaging/tags.py, packaging/_manylinux.py, and packaging/_musllinux.py,
+licensed under the Apache License, Version 2.0; and from Astral's uv
+(https://github.com/astral-sh/uv), specifically the uv-platform-tags crate,
+dual-licensed under the Apache License, Version 2.0, or the MIT license.

@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+package tags
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestCompile_RejectsUnsupported(t *testing.T) {
+	for _, tg := range []Target{
+		{Implementation: "pp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28},
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "solaris", Arch: "x86_64"},
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 10, MacMinor: 15},                  // <11
+		{Implementation: "cp", PyMajor: 3, PyMinor: -1, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}, // invalid PyMinor, must error not panic
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "musl", LibcMajor: 1, LibcMinor: -2},  // invalid negative LibcMinor, must error not panic
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 12, MacMinor: -1},                  // invalid negative MacMinor, must error not panic
+	} {
+		_, err := tg.Compile()
+		require.Error(t, err)
+	}
+}
+
+// tagStrings stringifies a []Tag for easy Contains/NotContains assertions.
+func tagStrings(tags []Tag) []string {
+	out := make([]string, len(tags))
+	for i, tag := range tags {
+		out[i] = tag.String()
+	}
+	return out
+}
+
+// TestLinux_ArchDependentFloor exercises the arch-dependent manylinux floor
+// table directly (see Global Constraints): x86_64 walks all the way down to
+// the manylinux1 (glibc 2.5) alias, while aarch64 floors at glibc 2.17 and
+// never claims manylinux_2_5_aarch64 (2.5 predates aarch64 manylinux
+// support entirely).
+func TestLinux_ArchDependentFloor(t *testing.T) {
+	mX, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}.Compile()
+	require.NoError(t, err)
+	assert.Contains(t, tagStrings(mX.Tags()), "cp311-cp311-manylinux_2_5_x86_64")
+	assert.Contains(t, tagStrings(mX.Tags()), "cp311-cp311-manylinux1_x86_64")
+
+	mA, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 9, OS: "linux", Arch: "aarch64", Libc: "glibc", LibcMajor: 2, LibcMinor: 17}.Compile()
+	require.NoError(t, err)
+	assert.NotContains(t, tagStrings(mA.Tags()), "cp39-cp39-manylinux_2_5_aarch64")
+	assert.Contains(t, tagStrings(mA.Tags()), "cp39-cp39-manylinux_2_17_aarch64")
+}
+
+// TestLinux_BareLinuxRankedLast asserts the deliberate divergence from
+// pypa/packaging: a bare "linux_<arch>" tag is accepted, but ranked below
+// every manylinux/musllinux tag for the same target.
+func TestLinux_BareLinuxRankedLast(t *testing.T) {
+	m, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}.Compile()
+	require.NoError(t, err)
+	rMany, ok1 := m.Rank([]Tag{{"cp311", "cp311", "manylinux_2_17_x86_64"}})
+	rBare, ok2 := m.Rank([]Tag{{"cp311", "cp311", "linux_x86_64"}})
+	require.True(t, ok1)
+	require.True(t, ok2)
+	assert.Less(t, rMany, rBare)
+}
+
+// TestMacOS_ArchFormats exercises the arch-dependent macOS binary-format
+// list (see Global Constraints): arm64 only ever claims "arm64"/"universal2"
+// (no legacy Intel formats), x86_64 claims the full legacy format list, and
+// both stop walking major versions at 11 (macOS 11+ only).
+func TestMacOS_ArchFormats(t *testing.T) {
+	mArm, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 10, OS: "macos", Arch: "arm64", MacMajor: 12, MacMinor: 0}.Compile()
+	require.NoError(t, err)
+	ss := tagStrings(mArm.Tags())
+	assert.Contains(t, ss, "cp310-cp310-macosx_12_0_arm64")
+	assert.Contains(t, ss, "cp310-cp310-macosx_12_0_universal2")
+	assert.Contains(t, ss, "cp310-cp310-macosx_11_0_arm64")
+	for _, s := range ss {
+		assert.NotContains(t, s, "_intel")
+		assert.NotContains(t, s, "_fat")
+		assert.NotContains(t, s, "macosx_10_")
+	}
+
+	mX, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "macos", Arch: "x86_64", MacMajor: 14, MacMinor: 0}.Compile()
+	require.NoError(t, err)
+	xs := tagStrings(mX.Tags())
+	for _, fmtSuffix := range []string{"x86_64", "intel", "fat64", "fat32", "universal2", "universal"} {
+		assert.Contains(t, xs, "cp312-cp312-macosx_14_0_"+fmtSuffix)
+		assert.Contains(t, xs, "cp312-cp312-macosx_11_0_"+fmtSuffix)
+	}
+	for _, s := range xs {
+		assert.NotContains(t, s, "macosx_10_")
+	}
+}
+
+func TestMatcher_RankPrefersMoreSpecific(t *testing.T) {
+	m, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "windows", Arch: "amd64"}.Compile()
+	require.NoError(t, err)
+	// exact cp311-cp311-win_amd64 must outrank the pure py3-none-any universal
+	rExact, ok1 := m.Rank([]Tag{{"cp311", "cp311", "win_amd64"}})
+	rUniv, ok2 := m.Rank([]Tag{{"py3", "none", "any"}})
+	require.True(t, ok1)
+	require.True(t, ok2)
+	assert.Less(t, rExact, rUniv)
+	_, ok := m.Rank([]Tag{{"cp311", "cp311", "manylinux_2_17_x86_64"}})
+	assert.False(t, ok) // linux tag incompatible with a windows target
+}

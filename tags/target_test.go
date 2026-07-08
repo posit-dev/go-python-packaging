@@ -12,11 +12,24 @@ func TestCompile_RejectsUnsupported(t *testing.T) {
 	for _, tg := range []Target{
 		{Implementation: "pp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28},
 		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "solaris", Arch: "x86_64"},
-		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 10, MacMinor: 15}, // <11
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 10, MacMinor: 15},                  // <11
+		{Implementation: "cp", PyMajor: 3, PyMinor: -1, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}, // invalid PyMinor, must error not panic
 	} {
 		_, err := tg.Compile()
 		require.Error(t, err)
 	}
+}
+
+// TestCompile_LinuxNotYetImplemented asserts that a well-formed linux Target
+// returns ErrUnsupportedTarget from Compile rather than panicking, since
+// linux platform tag generation is not implemented until #18632 Task 3. This
+// case is expected to start succeeding once that task lands; at that point it
+// should be replaced with a real linux golden-file assertion.
+func TestCompile_LinuxNotYetImplemented(t *testing.T) {
+	tg := Target{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}
+	_, err := tg.Compile()
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrUnsupportedTarget)
 }
 
 func TestMatcher_RankPrefersMoreSpecific(t *testing.T) {

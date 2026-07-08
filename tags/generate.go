@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 package tags
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // generateTags builds the full ordered, most-preferred-first list of
 // compatible tags for a (validated) Target. The ordering follows the
@@ -16,15 +19,18 @@ import "strconv"
 //     then the universal py*-none-any tail.
 //   - "py" targets: the same compatible tier and universal tail, without any
 //     interpreter-specific entries (there is no compiled ABI to bind to).
-func generateTags(t Target) []Tag {
+func generateTags(t Target) ([]Tag, error) {
 	if t.Implementation == "cp" {
 		return cpTags(t)
 	}
 	return pyTags(t)
 }
 
-func cpTags(t Target) []Tag {
-	plats := t.platformTags()
+func cpTags(t Target) ([]Tag, error) {
+	plats, err := t.platformTags()
+	if err != nil {
+		return nil, err
+	}
 	interp := interpTag("cp", t.PyMajor, t.PyMinor)
 
 	var out []Tag
@@ -68,11 +74,14 @@ func cpTags(t Target) []Tag {
 		out = append(out, Tag{v, "none", "any"})
 	}
 
-	return out
+	return out, nil
 }
 
-func pyTags(t Target) []Tag {
-	plats := t.platformTags()
+func pyTags(t Target) ([]Tag, error) {
+	plats, err := t.platformTags()
+	if err != nil {
+		return nil, err
+	}
 	pyRange := pyInterpreterRange(t.PyMajor, t.PyMinor)
 
 	var out []Tag
@@ -84,7 +93,7 @@ func pyTags(t Target) []Tag {
 	for _, v := range pyRange {
 		out = append(out, Tag{v, "none", "any"})
 	}
-	return out
+	return out, nil
 }
 
 // pyInterpreterRange mirrors packaging._py_interpreter_range: the exact
@@ -108,16 +117,21 @@ func interpTag(prefix string, major, minor int) string {
 // usually exactly one, but the shape stays a slice for symmetry with the
 // underlying pypa/packaging generators, some of which enumerate more than
 // one platform tag per target, e.g. macOS format fallbacks in Task 4).
-func (t Target) platformTags() []string {
+//
+// linux and macOS generation are not yet implemented (see #18632 Task 3/4);
+// until they land, both return ErrUnsupportedTarget rather than panicking,
+// so that Target.Compile keeps its "validates and returns an error" contract
+// for every OS Target.validate currently accepts.
+func (t Target) platformTags() ([]string, error) {
 	switch t.OS {
 	case "windows":
-		return windowsPlatformTags(t.Arch)
+		return windowsPlatformTags(t.Arch), nil
 	case "linux":
 		// Implemented in #18632 Task 3.
-		panic("tags: linux platform tag generation not implemented (see #18632 Task 3)")
+		return nil, fmt.Errorf("%w: linux tag generation not yet implemented", ErrUnsupportedTarget)
 	case "macos":
 		// Implemented in #18632 Task 4.
-		panic("tags: macOS platform tag generation not implemented (see #18632 Task 4)")
+		return nil, fmt.Errorf("%w: macos tag generation not yet implemented", ErrUnsupportedTarget)
 	default:
 		// Unreachable: Target.validate rejects any other OS before
 		// generateTags is ever called.

@@ -46,7 +46,10 @@ func (t Target) Compile() (*Matcher, error) {
 	if err := t.validate(); err != nil {
 		return nil, err
 	}
-	ordered := generateTags(t)
+	ordered, err := generateTags(t)
+	if err != nil {
+		return nil, err
+	}
 	rank := make(map[Tag]int, len(ordered))
 	for i, tag := range ordered {
 		if _, exists := rank[tag]; !exists {
@@ -61,6 +64,10 @@ func (t Target) validate() error {
 	case "cp", "py":
 	default:
 		return fmt.Errorf("%w: unsupported implementation %q", ErrUnsupportedTarget, t.Implementation)
+	}
+
+	if t.PyMajor <= 0 || t.PyMinor < 0 {
+		return fmt.Errorf("%w: invalid Python version %d.%d", ErrUnsupportedTarget, t.PyMajor, t.PyMinor)
 	}
 
 	switch t.OS {

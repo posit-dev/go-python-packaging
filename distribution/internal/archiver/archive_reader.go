@@ -54,8 +54,7 @@ func (z *zipReader) ReadFile(name string) ([]byte, error) {
 
 type tarReader struct {
 	filename string
-	*tar.Reader
-	closer io.Closer
+	closer   io.Closer
 }
 
 func (t *tarReader) FileNames() ([]string, error) {
@@ -96,8 +95,26 @@ func (t *tarReader) FileNames() ([]string, error) {
 }
 
 func (t *tarReader) ReadFile(name string) ([]byte, error) {
+	f, err := os.Open(t.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Printf("error closing file: %v", err)
+		}
+	}(f)
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	tarReader := tar.NewReader(gzr)
+
 	for {
-		hdr, err := t.Next()
+		hdr, err := tarReader.Next()
 		if err == io.EOF {
 			return nil, fmt.Errorf("file not found: %s", name)
 		}
@@ -105,7 +122,7 @@ func (t *tarReader) ReadFile(name string) ([]byte, error) {
 			return nil, err
 		}
 		if hdr.Name == name {
-			return io.ReadAll(t)
+			return io.ReadAll(tarReader)
 		}
 	}
 }
@@ -146,7 +163,7 @@ func NewArchiveReader(fqn string) (ArchiveReader, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &tarReader{fqn, r, f}, nil
+		return &tarReader{fqn, f}, nil
 	}
 
 	err = f.Close()

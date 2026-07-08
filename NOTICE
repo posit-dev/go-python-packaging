@@ -13,3 +13,7 @@ lands.
 The version/ package is derived from rstudio/go-pep440-version, itself a fork of
 aquasecurity/go-pep440-version (https://github.com/aquasecurity/go-pep440-version),
 licensed under the Apache License, Version 2.0.
+
+The distribution/ package is ported from rstudio/python-distribution-parser
+(https://github.com/rstudio/python-distribution-parser), Copyright (c) 2024
+Posit Software, PBC, originally MIT-licensed.

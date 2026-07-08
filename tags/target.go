@@ -81,6 +81,9 @@ func (t Target) validate() error {
 		if t.LibcMajor == 0 && t.LibcMinor == 0 {
 			return fmt.Errorf("%w: linux target requires a libc version", ErrUnsupportedTarget)
 		}
+		if t.LibcMajor <= 0 || t.LibcMinor < 0 {
+			return fmt.Errorf("%w: invalid libc version %d.%d", ErrUnsupportedTarget, t.LibcMajor, t.LibcMinor)
+		}
 	case "macos":
 		if !contains(macosArchs, t.Arch) {
 			return fmt.Errorf("%w: unsupported macOS arch %q", ErrUnsupportedTarget, t.Arch)

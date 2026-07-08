@@ -14,6 +14,7 @@ func TestCompile_RejectsUnsupported(t *testing.T) {
 		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "solaris", Arch: "x86_64"},
 		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 10, MacMinor: 15},                  // <11
 		{Implementation: "cp", PyMajor: 3, PyMinor: -1, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}, // invalid PyMinor, must error not panic
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "musl", LibcMajor: 1, LibcMinor: -2},  // invalid negative LibcMinor, must error not panic
 	} {
 		_, err := tg.Compile()
 		require.Error(t, err)

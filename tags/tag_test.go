@@ -30,6 +30,17 @@ func TestParseTag_CartesianAllThreeFields(t *testing.T) {
 	}, got)
 }
 
+func TestParseTag_CartesianAllThreeFieldsMultiElementABI(t *testing.T) {
+	got, err := ParseTag("cp36.cp37-abi3.abi4-manylinux1_x86_64")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []Tag{
+		{"cp36", "abi3", "manylinux1_x86_64"},
+		{"cp36", "abi4", "manylinux1_x86_64"},
+		{"cp37", "abi3", "manylinux1_x86_64"},
+		{"cp37", "abi4", "manylinux1_x86_64"},
+	}, got)
+}
+
 func TestParseTag_PurePython(t *testing.T) {
 	got, err := ParseTag("py2.py3-none-any")
 	require.NoError(t, err)
@@ -37,7 +48,7 @@ func TestParseTag_PurePython(t *testing.T) {
 }
 
 func TestParseTag_Invalid(t *testing.T) {
-	for _, s := range []string{"cp311-cp311", "a-b-c-d", "cp311--any", "cp311-none-"} {
+	for _, s := range []string{"cp311-cp311", "a-b-c-d", "cp311--any", "cp311-none-", "cp36..cp37-abi3-any"} {
 		_, err := ParseTag(s)
 		require.Error(t, err, s)
 	}

@@ -134,10 +134,14 @@ type Matcher struct {
 	rank map[Tag]int
 }
 
-// Tags returns the full ordered list of compatible tags, most preferred
-// first.
+// Tags returns a copy of the full ordered list of compatible tags, most
+// preferred first. It is an inspection method, not the hot path (Rank and
+// IsCompatible are); the copy protects the Matcher's internal slice from
+// mutation by the caller.
 func (m *Matcher) Tags() []Tag {
-	return m.tags
+	out := make([]Tag, len(m.tags))
+	copy(out, m.tags)
+	return out
 }
 
 // Rank reports the best (lowest, most preferred) priority among the given

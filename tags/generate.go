@@ -240,11 +240,20 @@ func manylinuxTags(arch string, major, minor int) []string {
 	return out
 }
 
+// musllinuxMajor is the only musl ABI major version musllinux tags are
+// currently defined for (PEP 656); unlike manylinux/glibc, musl has not yet
+// had an ABI-breaking major-version bump requiring a musllinux_2_* series.
+const musllinuxMajor = 1
+
 // musllinuxTags returns "musllinux_<major>_<minor>_<arch>" for every musl
 // version from the target's declared version down to musllinux_<major>_0,
 // newest first. Unlike manylinux there is no architecture-dependent floor or
-// legacy alias.
+// legacy alias. A target whose major doesn't match musllinuxMajor yields no
+// musllinux tags, mirroring manylinuxTags' major-version guard.
 func musllinuxTags(arch string, major, minor int) []string {
+	if major != musllinuxMajor {
+		return nil
+	}
 	out := make([]string, 0, minor+1)
 	for m := minor; m >= 0; m-- {
 		out = append(out, fmt.Sprintf("musllinux_%d_%d_%s", major, m, arch))

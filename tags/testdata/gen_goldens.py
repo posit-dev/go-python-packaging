@@ -112,4 +112,34 @@ write_linux("cp39_glibc217_aarch64.json", (3, 9), "cp39", "aarch64", "glibc", 2,
 # tags at all (this target has no glibc).
 write_linux("cp312_musl12_x86_64.json", (3, 12), "cp312", "x86_64", "musl", 1, 2)
 
-# macOS targets (11+) are added in #18632 Task 4.
+# --- macOS targets: 11+ only ------------------------------------------------
+#
+# packaging.tags.mac_platforms((major, 0), arch) is directly parameterized by
+# declared (major, minor) and arch -- no host-detection monkeypatching needed,
+# unlike linux. It also yields a legacy compatibility tail of pre-11
+# "macosx_10_<n>_<fmt>" tags (each yearly macOS release prior to 11 bumped
+# the minor version under major 10); per Global Constraints ("macOS: 11+
+# only ... Pre-11 deferred") we deliberately drop that tail here so the
+# golden fixture reflects our supported range, not packaging's full range.
+def _mac_platform_list(major, arch):
+    platforms = list(T.mac_platforms((major, 0), arch))
+    return [p for p in platforms if not p.startswith("macosx_10_")]
+
+
+def write_macos(name, python_version, interpreter, major, arch):
+    platforms = _mac_platform_list(major, arch)
+    write(
+        name,
+        list(T.cpython_tags(python_version=python_version, abis=[interpreter], platforms=platforms))
+        + list(T.compatible_tags(python_version=python_version, interpreter=interpreter, platforms=platforms)),
+    )
+
+
+# cp310, macOS 12, arm64: format walk stops at macosx_12_0/macosx_11_0, each
+# with just [arm64, universal2] -- arm64 has no intel/fat* legacy formats.
+write_macos("cp310_macos12_arm64.json", (3, 10), "cp310", 12, "arm64")
+
+# cp312, macOS 14, x86_64: full x86_64 format list
+# ([x86_64, intel, fat64, fat32, universal2, universal]) at each of
+# macosx_14_0/13_0/12_0/11_0.
+write_macos("cp312_macos14_x86_64.json", (3, 12), "cp312", 14, "x86_64")

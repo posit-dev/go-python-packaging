@@ -116,12 +116,8 @@ func interpTag(prefix string, major, minor int) string {
 // platformTags returns the target's platform component strings (there is
 // usually exactly one, but the shape stays a slice for symmetry with the
 // underlying pypa/packaging generators, some of which enumerate more than
-// one platform tag per target, e.g. macOS format fallbacks in Task 4).
-//
-// macOS generation is not yet implemented (see #18632 Task 4); until it
-// lands it returns ErrUnsupportedTarget rather than panicking, so that
-// Target.Compile keeps its "validates and returns an error" contract for
-// every OS Target.validate currently accepts.
+// one platform tag per target, e.g. macOS's per-major-version format
+// fallbacks).
 func (t Target) platformTags() ([]string, error) {
 	switch t.OS {
 	case "windows":
@@ -129,8 +125,7 @@ func (t Target) platformTags() ([]string, error) {
 	case "linux":
 		return linuxPlatformTags(t), nil
 	case "macos":
-		// Implemented in #18632 Task 4.
-		return nil, fmt.Errorf("%w: macos tag generation not yet implemented", ErrUnsupportedTarget)
+		return macosPlatformTags(t.Arch, t.MacMajor), nil
 	default:
 		// Unreachable: Target.validate rejects any other OS before
 		// generateTags is ever called.
@@ -253,6 +248,40 @@ func musllinuxTags(arch string, major, minor int) []string {
 	out := make([]string, 0, minor+1)
 	for m := minor; m >= 0; m-- {
 		out = append(out, fmt.Sprintf("musllinux_%d_%d_%s", major, m, arch))
+	}
+	return out
+}
+
+// macosBinaryFormats is the ordered list of binary-format suffixes a macOS
+// architecture's tags may claim (per pypa/packaging's _mac_binary_formats,
+// restricted to the archs this package supports). "intel"/"fat64"/"fat32"
+// are legacy 32/64-bit-Intel umbrella formats that only ever applied to
+// x86_64 (and, pre-Intel-64, i386/ppc, which are out of scope here);
+// "universal"/"universal2" are fat binaries spanning multiple architectures.
+var macosBinaryFormats = map[string][]string{
+	"x86_64": {"x86_64", "intel", "fat64", "fat32", "universal2", "universal"},
+	"arm64":  {"arm64", "universal2"},
+}
+
+// macosPlatformTags returns the ordered platform-tag list for a macOS
+// Target: "macosx_<M>_0_<fmt>" for every major version M from the target's
+// declared major version down to 11 (inclusive), newest first, each paired
+// with every binary format the architecture supports. Only macOS 11+ is
+// supported (Global Constraints: "macOS: 11+ only" -- pre-11's yearly
+// major-version-10 minor-bump numbering, and pypa/packaging's compatibility
+// tail of pre-11 "macosx_10_<n>_universal2" fallbacks, are both deferred).
+func macosPlatformTags(arch string, major int) []string {
+	formats, ok := macosBinaryFormats[arch]
+	if !ok {
+		// Unreachable: Target.validate restricts macOS Arch to macosArchs,
+		// and every entry there has a macosBinaryFormats list.
+		panic("tags: no binary formats for macOS arch " + arch)
+	}
+	out := make([]string, 0, (major-11+1)*len(formats))
+	for m := major; m >= 11; m-- {
+		for _, f := range formats {
+			out = append(out, fmt.Sprintf("macosx_%d_0_%s", m, f))
+		}
 	}
 	return out
 }

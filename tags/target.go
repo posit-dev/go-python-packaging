@@ -35,7 +35,10 @@ type Target struct {
 	LibcMinor int
 
 	// MacMajor and MacMinor are required when OS == "macos". Only macOS 11
-	// and later is supported.
+	// and later is supported. Generated tags always use "<major>_0" (macOS
+	// 11+ yearly releases only bump the major version), so MacMinor does not
+	// affect the generated tag set; it is validated (must be >= 0) for
+	// forward compatibility and symmetry with PyMinor/LibcMinor.
 	MacMajor int
 	MacMinor int
 }
@@ -90,6 +93,9 @@ func (t Target) validate() error {
 		}
 		if t.MacMajor < 11 {
 			return fmt.Errorf("%w: macOS target requires major version >= 11, got %d", ErrUnsupportedTarget, t.MacMajor)
+		}
+		if t.MacMinor < 0 {
+			return fmt.Errorf("%w: invalid macOS minor version %d", ErrUnsupportedTarget, t.MacMinor)
 		}
 	case "windows":
 		if !contains(windowsArchs, t.Arch) {

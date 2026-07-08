@@ -15,6 +15,7 @@ func TestCompile_RejectsUnsupported(t *testing.T) {
 		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 10, MacMinor: 15},                  // <11
 		{Implementation: "cp", PyMajor: 3, PyMinor: -1, OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28}, // invalid PyMinor, must error not panic
 		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "linux", Arch: "x86_64", Libc: "musl", LibcMajor: 1, LibcMinor: -2},  // invalid negative LibcMinor, must error not panic
+		{Implementation: "cp", PyMajor: 3, PyMinor: 11, OS: "macos", Arch: "arm64", MacMajor: 12, MacMinor: -1},                  // invalid negative MacMinor, must error not panic
 	} {
 		_, err := tg.Compile()
 		require.Error(t, err)
@@ -58,6 +59,35 @@ func TestLinux_BareLinuxRankedLast(t *testing.T) {
 	require.True(t, ok1)
 	require.True(t, ok2)
 	assert.Less(t, rMany, rBare)
+}
+
+// TestMacOS_ArchFormats exercises the arch-dependent macOS binary-format
+// list (see Global Constraints): arm64 only ever claims "arm64"/"universal2"
+// (no legacy Intel formats), x86_64 claims the full legacy format list, and
+// both stop walking major versions at 11 (macOS 11+ only).
+func TestMacOS_ArchFormats(t *testing.T) {
+	mArm, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 10, OS: "macos", Arch: "arm64", MacMajor: 12, MacMinor: 0}.Compile()
+	require.NoError(t, err)
+	ss := tagStrings(mArm.Tags())
+	assert.Contains(t, ss, "cp310-cp310-macosx_12_0_arm64")
+	assert.Contains(t, ss, "cp310-cp310-macosx_12_0_universal2")
+	assert.Contains(t, ss, "cp310-cp310-macosx_11_0_arm64")
+	for _, s := range ss {
+		assert.NotContains(t, s, "_intel")
+		assert.NotContains(t, s, "_fat")
+		assert.NotContains(t, s, "macosx_10_")
+	}
+
+	mX, err := Target{Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "macos", Arch: "x86_64", MacMajor: 14, MacMinor: 0}.Compile()
+	require.NoError(t, err)
+	xs := tagStrings(mX.Tags())
+	for _, fmtSuffix := range []string{"x86_64", "intel", "fat64", "fat32", "universal2", "universal"} {
+		assert.Contains(t, xs, "cp312-cp312-macosx_14_0_"+fmtSuffix)
+		assert.Contains(t, xs, "cp312-cp312-macosx_11_0_"+fmtSuffix)
+	}
+	for _, s := range xs {
+		assert.NotContains(t, s, "macosx_10_")
+	}
 }
 
 func TestMatcher_RankPrefersMoreSpecific(t *testing.T) {

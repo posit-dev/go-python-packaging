@@ -19,7 +19,7 @@ Part of [RFD 0001 — Native Go PyPI Dependency Resolution](https://github.com/r
 | `reqtxt/` | pip `requirements.txt` format |
 | [`distribution/`](https://github.com/rstudio/python-distribution-parser) | METADATA / wheel parsing |
 | `wheelname/` | wheel filename → structured fields |
-| `tags/` | PEP 425/600/656 compatibility tags |
+| `tags/` | PEP 425/600/656 compatibility tags (server-side, target-parameterized; no host detection) |
 
 ## License
 

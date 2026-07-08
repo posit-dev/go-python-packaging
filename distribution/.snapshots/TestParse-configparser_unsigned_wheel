@@ -1,4 +1,4 @@
-(parse_test.ParserData) {
+(distribution_test.ParserData) {
   Metadata: (map[string][]string) (len=24) {
     (string) (len=7) ":action": ([]string) (len=1) {
       (string) (len=11) "file_upload"

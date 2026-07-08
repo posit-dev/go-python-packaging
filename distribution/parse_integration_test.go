@@ -1,3 +1,5 @@
+//go:build distribution_integration
+
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 package distribution_test
@@ -418,8 +420,9 @@ func filterData(data ParserData) ParserData {
 }
 
 func TestParse(t *testing.T) {
-	err := checkRequirements()
-	require.NoError(t, err)
+	if err := checkRequirements(); err != nil {
+		t.Skipf("skipping integration test: %v", err)
+	}
 
 	testCases := lo.FlatMap(repositories, func(repository Repository, _ int) []testCase {
 		return lo.FlatMap([]bool{true, false}, func(isSigned bool, _ int) []testCase {
@@ -442,7 +445,6 @@ func TestParse(t *testing.T) {
 
 	for _, testCase := range testCases {
 		repositoryName := toRepositoryName(testCase.repository.url)
-		require.NoError(t, err)
 
 		repository := testCase.repository
 		isSigned := testCase.isSigned

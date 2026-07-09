@@ -32,3 +32,8 @@ packaging/utils.py's `parse_wheel_filename`, licensed under the Apache
 License, Version 2.0; and from Astral's uv (https://github.com/astral-sh/uv),
 specifically the uv-distribution-filename crate, dual-licensed under the
 Apache License, Version 2.0, or the MIT license.
+
+The extras/ package adapts PEP 685/503 name-canonicalization from
+pypa/packaging (https://github.com/pypa/packaging), specifically
+packaging/utils.py's `canonicalize_name`, licensed under the Apache
+License, Version 2.0.

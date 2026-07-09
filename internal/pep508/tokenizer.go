@@ -10,11 +10,13 @@ import (
 
 // Kind identifies a lexical token kind recognized by the Tokenizer.
 //
-// This is the marker-grammar subset of pypa/packaging's DEFAULT_RULES keys
-// (_tokenizer.py): WS, LPAREN, RPAREN, OP, BOOLOP, IN, NOT, VARIABLE,
-// QUOTED_STRING, END. Requirement-only kinds (IDENTIFIER, LBRACKET,
-// RBRACKET, SPECIFIER, AT, URL) are added alongside the requirement parser
-// that needs them.
+// This is pypa/packaging's DEFAULT_RULES keys (_tokenizer.py): the
+// marker-grammar subset (WS, LPAREN, RPAREN, OP, BOOLOP, IN, NOT, VARIABLE,
+// QUOTED_STRING, END), plus the requirement-only kinds needed by the
+// requirement parser (IDENTIFIER, LBRACKET, RBRACKET, COMMA, SEMICOLON, AT,
+// SPECIFIER, URL). The requirement-only kinds coexist with the marker kinds
+// without any ordering conflict, since matching is parser-driven (a given
+// Kind is only ever attempted where the calling grammar expects it).
 type Kind int
 
 const (
@@ -44,6 +46,38 @@ const (
 	QuotedString
 	// End matches only at the end of the source (zero-width).
 	End
+
+	// --- requirement-only kinds below: used by the requirement parser
+	// (internal/pep508/requirement.go), never by the marker parser. ---
+
+	// Identifier matches a PEP 508 "identifier" production: a package name
+	// or extra name. Per packaging's IDENTIFIER rule, the ground truth for
+	// this grammar (PEP 508's prose and formal grammar disagree).
+	Identifier
+	// LBracket matches a literal "[", opening an extras list.
+	LBracket
+	// RBracket matches a literal "]", closing an extras list.
+	RBracket
+	// Comma matches a literal ",", separating extras or specifier clauses.
+	Comma
+	// Semicolon matches a literal ";", introducing a "; marker" clause.
+	Semicolon
+	// AT matches a literal "@", introducing a "@ url" clause.
+	AT
+	// Specifier matches one version-specifier clause: a PEP 440
+	// comparison operator followed by a version-shaped token. The raw
+	// text is handed to version.NewSpecifiers for authoritative parsing
+	// and validation; the tokenizer's own version-shape match need only
+	// be permissive enough to bound the clause (up to the next
+	// whitespace, comma, semicolon, or closing paren).
+	Specifier
+	// URL matches a greedy run of non-whitespace characters following
+	// "@". It intentionally has no upper bound other than whitespace (not
+	// even ";"), since a URL requirement's URL can itself contain a
+	// semicolon (e.g. a direct-reference wheel URL with a query string);
+	// PEP 508 relies on mandatory whitespace, not "no semicolons in a
+	// URL", to separate a URL from a following marker clause.
+	URL
 )
 
 // String renders a Kind by its packaging DEFAULT_RULES name, primarily for
@@ -70,6 +104,22 @@ func (k Kind) String() string {
 		return "QUOTED_STRING"
 	case End:
 		return "END"
+	case Identifier:
+		return "IDENTIFIER"
+	case LBracket:
+		return "LBRACKET"
+	case RBracket:
+		return "RBRACKET"
+	case Comma:
+		return "COMMA"
+	case Semicolon:
+		return "SEMICOLON"
+	case AT:
+		return "AT"
+	case Specifier:
+		return "SPECIFIER"
+	case URL:
+		return "URL"
 	default:
 		return fmt.Sprintf("Kind(%d)", int(k))
 	}
@@ -104,15 +154,19 @@ func (t Token) Unquoted() string {
 // it starts at position 0 of the (position-sliced) source - see check.
 //
 // Rules are matched with \A against source[pos:], so a leading \b in a rule
-// (BoolOp, IN, NOT, Variable) sees the start of that slice as a word
-// boundary, regardless of what precedes source[pos] in the full source.
-// This is safe today because every reachable pos follows either
+// (BoolOp, IN, NOT, Variable, Identifier) sees the start of that slice as a
+// word boundary, regardless of what precedes source[pos] in the full
+// source. This is safe because every reachable pos follows either
 // start-of-input or a token ending in a non-word character (WS, LParen,
-// OP, QuotedString, ...), so the synthetic boundary at the slice start
-// always agrees with the true boundary in the unsliced source. A future
-// rule added without a trailing word-boundary of its own (e.g. an
-// IDENTIFIER kind for the requirement parser) could be reached right
-// after a word-character token and would need this assumption checked.
+// OP, QuotedString, LBracket, RBracket, Comma, Semicolon, AT, ...), so the
+// synthetic boundary at the slice start always agrees with the true
+// boundary in the unsliced source. Identifier (added for the requirement
+// parser) was checked against this invariant when it was introduced: every
+// grammar position that checks Identifier is reached only after such a
+// delimiter, start-of-input, or whitespace - never directly after another
+// word-character token with no separator - see
+// TestIdentifier_NeverCheckedAfterWordCharWithNoBoundary in
+// requirement_test.go.
 var tokenRules = map[Kind]*regexp.Regexp{
 	WS:     regexp.MustCompile(`\A\s+`),
 	LParen: regexp.MustCompile(`\A\(`),
@@ -136,6 +190,32 @@ var tokenRules = map[Kind]*regexp.Regexp{
 		`)\b`),
 	QuotedString: regexp.MustCompile(`\A(?:'[^']*'|"[^"]*")`),
 	End:          regexp.MustCompile(`\A$`),
+
+	// --- requirement-only rules below (see the requirement-only Kind
+	// constants for what each matches and why). ---
+
+	Identifier: regexp.MustCompile(`\A\b[a-zA-Z0-9][a-zA-Z0-9._-]*\b`),
+	LBracket:   regexp.MustCompile(`\A\[`),
+	RBracket:   regexp.MustCompile(`\A\]`),
+	Comma:      regexp.MustCompile(`\A,`),
+	Semicolon:  regexp.MustCompile(`\A;`),
+	AT:         regexp.MustCompile(`\A@`),
+	// Specifier: an OP (reusing the same longest-first alternation as the
+	// OP rule) followed by optional whitespace and a version-shaped run
+	// of characters, bounded by whitespace/comma/semicolon/closing-paren
+	// rather than a precise PEP 440 grammar - version.NewSpecifiers is
+	// the authoritative parser for the accumulated raw text.
+	Specifier: regexp.MustCompile(`\A(?:===|==|~=|!=|<=|>=|<|>)\s*[^\s,;)]+`),
+	// URL: a greedy run of non-whitespace characters - the exact
+	// complement of the WS rule above (\s+) - deliberately not bounded by
+	// ";" (see the URL Kind doc comment). Upstream packaging's rule
+	// excludes only space ([^ ]+); this port is stricter, treating all
+	// whitespace (including tab and newlines) as a terminator. That's
+	// safe because a valid URL never contains whitespace, and it avoids
+	// a stray newline (e.g. in a defensively-multiline Requires-Dist
+	// value) being absorbed into the URL along with a following "; marker"
+	// clause.
+	URL: regexp.MustCompile(`\A\S+`),
 }
 
 // Tokenizer performs context-sensitive lexing over a PEP 508 source string.

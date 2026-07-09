@@ -36,6 +36,20 @@ func Parse(s string) (Marker, error) {
 	return Marker{ast: ast}, nil
 }
 
+// FromExpr wraps an already-parsed internal marker expression into a
+// Marker. It is the seam the requirement/ parser uses to build the Marker
+// for a requirement's "; marker" clause without re-lexing: requirement/
+// drives the shared internal/pep508 tokenizer end-to-end itself (parsing
+// the marker clause mid-stream via pep508.ParseMarker), so it already has a
+// pep508.Expr in hand and has no need - and, since Marker.ast is
+// unexported, no ability - to go through Parse's string-based entry point.
+//
+// A nil expr yields the zero-value "always true" Marker, matching what
+// Parse returns for the absence of a "; marker" clause.
+func FromExpr(e pep508.Expr) Marker {
+	return Marker{ast: e}
+}
+
 // IsEmpty reports whether m is the zero-value "always true" marker - i.e.
 // there is no marker clause to evaluate at all, as opposed to a parsed
 // marker expression that merely evaluates to true in some environment.

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/posit-dev/go-python-packaging/tags"
+	"github.com/posit-dev/go-python-packaging/version"
 )
 
 // ErrUnsupportedTarget is returned by EnvironmentFromTarget when the given
@@ -147,10 +148,32 @@ func repairPythonFullVersion(full string) string {
 }
 
 // majorMinor extracts the "major.minor" prefix of a python_full_version
-// string such as "3.11.4" -> "3.11". It returns an error if full does not
-// have at least two dot-separated, non-empty components.
+// string such as "3.11.4" -> "3.11". The derivation is based only on the
+// leading numeric release segment of full - any pre/post/dev/local suffix
+// (e.g. the "+local" appended by repairPythonFullVersion for a bare
+// trailing "+", or "rc1", ".post1", ".dev0") is discarded rather than
+// naively split on ".", so "3.11+local" correctly yields "3.11" instead of
+// the bogus "3.11+local". full is first validated as a real PEP 440 version
+// via version.Parse; an error is returned for malformed input (e.g. "" or
+// "abc") or if the release segment has fewer than two dot-separated,
+// non-empty numeric components (e.g. "3" alone).
 func majorMinor(full string) (string, error) {
-	parts := strings.SplitN(full, ".", 3)
+	if _, err := version.Parse(full); err != nil {
+		return "", fmt.Errorf("marker: cannot derive python_version from python_full_version %q: %w", full, err)
+	}
+
+	// Cut full at the first rune that is not part of the release segment
+	// (i.e. not a digit or "."), discarding any epoch marker ("!") and any
+	// pre/post/dev/local suffix.
+	end := strings.IndexFunc(full, func(r rune) bool {
+		return (r < '0' || r > '9') && r != '.'
+	})
+	release := full
+	if end >= 0 {
+		release = full[:end]
+	}
+
+	parts := strings.SplitN(release, ".", 3)
 	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("marker: cannot derive python_version from python_full_version %q", full)
 	}

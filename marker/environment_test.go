@@ -128,6 +128,59 @@ func TestEnvironmentFromTarget_MalformedPythonFullVersion_Errors(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestEnvironmentFromTarget_BareTrailingPlus_PythonVersionDerived is the
+// RoboRev regression case: repairPythonFullVersion turns a bare trailing "+"
+// into "+local" (e.g. "3.11+" -> "3.11+local"), and majorMinor must still
+// derive "3.11" from that repaired value rather than returning the raw
+// "3.11+local" (as a naive strings.SplitN(full, ".", 3) based derivation
+// would).
+func TestEnvironmentFromTarget_BareTrailingPlus_PythonVersionDerived(t *testing.T) {
+	target := tags.Target{OS: "linux", Arch: "x86_64"}
+	id := testIdentity()
+	id.PythonFullVersion = "3.11+"
+	env, err := EnvironmentFromTarget(target, id)
+	require.NoError(t, err)
+
+	assert.Equal(t, "3.11+local", env.PythonFullVersion)
+	assert.Equal(t, "3.11", env.PythonVersion)
+}
+
+func TestEnvironmentFromTarget_PythonVersion_DiscardsLocalSuffix(t *testing.T) {
+	target := tags.Target{OS: "linux", Arch: "x86_64"}
+	id := testIdentity()
+	id.PythonFullVersion = "3.11.0+local"
+	env, err := EnvironmentFromTarget(target, id)
+	require.NoError(t, err)
+
+	assert.Equal(t, "3.11", env.PythonVersion)
+}
+
+func TestEnvironmentFromTarget_PythonVersion_DiscardsPreReleaseSuffix(t *testing.T) {
+	target := tags.Target{OS: "linux", Arch: "x86_64"}
+	id := testIdentity()
+	id.PythonFullVersion = "3.11.0rc1"
+	env, err := EnvironmentFromTarget(target, id)
+	require.NoError(t, err)
+
+	assert.Equal(t, "3.11", env.PythonVersion)
+}
+
+func TestEnvironmentFromTarget_EmptyPythonFullVersion_Errors(t *testing.T) {
+	target := tags.Target{OS: "linux", Arch: "x86_64"}
+	id := testIdentity()
+	id.PythonFullVersion = ""
+	_, err := EnvironmentFromTarget(target, id)
+	require.Error(t, err)
+}
+
+func TestEnvironmentFromTarget_NonNumericPythonFullVersion_Errors(t *testing.T) {
+	target := tags.Target{OS: "linux", Arch: "x86_64"}
+	id := testIdentity()
+	id.PythonFullVersion = "abc"
+	_, err := EnvironmentFromTarget(target, id)
+	require.Error(t, err)
+}
+
 func TestEnvironmentFromTarget_InterpreterFieldsCopied(t *testing.T) {
 	target := tags.Target{OS: "linux", Arch: "x86_64"}
 	id := InterpreterIdentity{

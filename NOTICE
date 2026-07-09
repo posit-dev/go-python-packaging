@@ -37,3 +37,8 @@ The extras/ package adapts PEP 685/503 name-canonicalization from
 pypa/packaging (https://github.com/pypa/packaging), specifically
 packaging/utils.py's `canonicalize_name`, licensed under the Apache
 License, Version 2.0.
+
+The internal/pep508 package's tokenizer adapts the lexer design of
+pypa/packaging (https://github.com/pypa/packaging), specifically
+packaging/_tokenizer.py's `Tokenizer`, `Token`, `ParserSyntaxError`, and
+`DEFAULT_RULES`, licensed under the Apache License, Version 2.0.

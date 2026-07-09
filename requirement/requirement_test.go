@@ -68,22 +68,21 @@ func TestParse_VersionSpec_Parenthesized(t *testing.T) {
 	assert.Equal(t, want.String(), r.Specifiers.String())
 }
 
+func TestParse_VersionSpec_EmptyParens_IsError(t *testing.T) {
+	_, err := Parse("foo()")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrInvalidRequirement))
+}
+
 func TestParse_VersionSpec_MultipleClauses(t *testing.T) {
 	r, err := Parse("foo>=1.0,<2.0")
 	require.NoError(t, err)
-	v, err := (versionParse("1.5"))
+	v, err := version.Parse("1.5")
 	require.NoError(t, err)
 	assert.True(t, r.Specifiers.Check(v))
-	v2, err := versionParse("2.5")
+	v2, err := version.Parse("2.5")
 	require.NoError(t, err)
 	assert.False(t, r.Specifiers.Check(v2))
-}
-
-// versionParse is a tiny local helper wrapping version.Parse, to avoid
-// importing it under a name that collides with this file's other uses of
-// "version" as a package alias.
-func versionParse(s string) (version.Version, error) {
-	return version.Parse(s)
 }
 
 // --- grammar asymmetry: no space required before ";" after a name/versionspec ---

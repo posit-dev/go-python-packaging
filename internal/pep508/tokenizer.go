@@ -207,7 +207,10 @@ var tokenRules = map[Kind]*regexp.Regexp{
 	// the authoritative parser for the accumulated raw text.
 	Specifier: regexp.MustCompile(`\A(?:===|==|~=|!=|<=|>=|<|>)\s*[^\s,;)]+`),
 	// URL: greedy non-whitespace, per packaging - deliberately not
-	// bounded by ";" (see the URL Kind doc comment).
+	// bounded by ";" (see the URL Kind doc comment). Upstream packaging's
+	// rule excludes only space ([^ ]+); this port also excludes tab,
+	// consistent with the WS rule above - a deliberate space+tab
+	// divergence from upstream, harmless for single-line Requires-Dist.
 	URL: regexp.MustCompile(`\A[^ \t]+`),
 }
 

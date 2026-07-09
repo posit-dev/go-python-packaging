@@ -171,6 +171,22 @@ func TestParseRequirement_URLContainingSemicolon_NoMarker(t *testing.T) {
 	assert.Nil(t, req.Marker)
 }
 
+// --- URL terminates at any whitespace, not just space/tab ---
+
+func TestParseRequirement_URLThenNewlineThenMarker_Splits(t *testing.T) {
+	// A defensively-multiline value: the "@ url" clause ends in a newline
+	// rather than a space before "; marker". The URL rule must treat the
+	// newline as a terminator (it is the exact complement of the WS rule,
+	// \s+) so the marker clause is not absorbed into the URL token.
+	req := parseRequirementString(t, "foo @ https://x/y\n; python_version > \"3\"")
+	assert.Equal(t, "https://x/y", req.URL)
+	require.NotNil(t, req.Marker)
+	cmp, ok := req.Marker.(*CompareExpr)
+	require.True(t, ok)
+	assert.Equal(t, EnvVar{Name: "python_version"}, cmp.Lhs)
+	assert.Equal(t, Literal{Value: "3"}, cmp.Rhs)
+}
+
 // --- grammar asymmetry: url form requires wsp+ before ";" marker ---
 
 func TestParseRequirement_URLForm_NoSpaceBeforeMarker_SwallowsIntoURL(t *testing.T) {

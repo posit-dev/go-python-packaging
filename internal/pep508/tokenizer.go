@@ -206,12 +206,16 @@ var tokenRules = map[Kind]*regexp.Regexp{
 	// rather than a precise PEP 440 grammar - version.NewSpecifiers is
 	// the authoritative parser for the accumulated raw text.
 	Specifier: regexp.MustCompile(`\A(?:===|==|~=|!=|<=|>=|<|>)\s*[^\s,;)]+`),
-	// URL: greedy non-whitespace, per packaging - deliberately not
-	// bounded by ";" (see the URL Kind doc comment). Upstream packaging's
-	// rule excludes only space ([^ ]+); this port also excludes tab,
-	// consistent with the WS rule above - a deliberate space+tab
-	// divergence from upstream, harmless for single-line Requires-Dist.
-	URL: regexp.MustCompile(`\A[^ \t]+`),
+	// URL: a greedy run of non-whitespace characters - the exact
+	// complement of the WS rule above (\s+) - deliberately not bounded by
+	// ";" (see the URL Kind doc comment). Upstream packaging's rule
+	// excludes only space ([^ ]+); this port is stricter, treating all
+	// whitespace (including tab and newlines) as a terminator. That's
+	// safe because a valid URL never contains whitespace, and it avoids
+	// a stray newline (e.g. in a defensively-multiline Requires-Dist
+	// value) being absorbed into the URL along with a following "; marker"
+	// clause.
+	URL: regexp.MustCompile(`\A\S+`),
 }
 
 // Tokenizer performs context-sensitive lexing over a PEP 508 source string.

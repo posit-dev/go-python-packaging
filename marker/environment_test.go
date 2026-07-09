@@ -165,6 +165,19 @@ func TestEnvironmentFromTarget_PythonVersion_DiscardsPreReleaseSuffix(t *testing
 	assert.Equal(t, "3.11", env.PythonVersion)
 }
 
+// An epoch prefix ("<N>!") is valid PEP 440 (though it never appears in a real
+// interpreter's python_full_version); majorMinor discards it rather than
+// erroring on the version it just validated.
+func TestEnvironmentFromTarget_PythonVersion_DiscardsEpoch(t *testing.T) {
+	target := tags.Target{OS: "linux", Arch: "x86_64"}
+	id := testIdentity()
+	id.PythonFullVersion = "1!3.11.4"
+	env, err := EnvironmentFromTarget(target, id)
+	require.NoError(t, err)
+
+	assert.Equal(t, "3.11", env.PythonVersion)
+}
+
 func TestEnvironmentFromTarget_EmptyPythonFullVersion_Errors(t *testing.T) {
 	target := tags.Target{OS: "linux", Arch: "x86_64"}
 	id := testIdentity()

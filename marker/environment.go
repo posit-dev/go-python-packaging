@@ -162,15 +162,20 @@ func majorMinor(full string) (string, error) {
 		return "", fmt.Errorf("marker: cannot derive python_version from python_full_version %q: %w", full, err)
 	}
 
-	// Cut full at the first rune that is not part of the release segment
-	// (i.e. not a digit or "."), discarding any epoch marker ("!") and any
-	// pre/post/dev/local suffix.
-	end := strings.IndexFunc(full, func(r rune) bool {
+	// Drop a leading "v"/"V" and any epoch prefix ("<N>!"), both of which
+	// PEP 440 permits before the release segment, then cut at the first rune
+	// that is not part of the release segment (not a digit or "."), which
+	// discards any pre/post/dev/local suffix.
+	rest := strings.TrimLeft(full, "vV")
+	if bang := strings.IndexByte(rest, '!'); bang >= 0 {
+		rest = rest[bang+1:]
+	}
+	end := strings.IndexFunc(rest, func(r rune) bool {
 		return (r < '0' || r > '9') && r != '.'
 	})
-	release := full
+	release := rest
 	if end >= 0 {
-		release = full[:end]
+		release = rest[:end]
 	}
 
 	parts := strings.SplitN(release, ".", 3)

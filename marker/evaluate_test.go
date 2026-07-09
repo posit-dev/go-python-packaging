@@ -178,6 +178,11 @@ func TestEvaluate_Extra_SetMembership(t *testing.T) {
 		{"normalization, literal side", `extra == "Foo_Bar"`, []string{"foo-bar"}, true},
 		{"normalization, active side", `extra == "foo-bar"`, []string{"Foo_Bar"}, true},
 		{"normalization, both sides", `extra == "Foo.Bar"`, []string{"foo_bar"}, true},
+		// Only == and != are meaningful for extra set-membership; any other
+		// operator is inapplicable and evaluates false, even when the extra
+		// named on the value side is active.
+		{"< present (inapplicable op)", `extra < "foo"`, []string{"foo"}, false},
+		{"in present (inapplicable op)", `extra in "foo"`, []string{"foo"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

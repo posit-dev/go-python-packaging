@@ -119,10 +119,9 @@ func EnvironmentFromTarget(t tags.Target, id InterpreterIdentity) (Environment, 
 
 // windowsPlatformMachine maps a tags.Target windows arch ("amd64", "arm64",
 // "x86") to the value real Windows Python reports for platform.machine()
-// ("AMD64", "ARM64", "x86" - note "x86" stays lower-case). Any other value
-// is upper-cased as a best-effort fallback; tags.Target validates windows
-// arches to this exact set (see tags.Target.Compile), so this path is not
-// expected to be exercised.
+// ("AMD64", "ARM64", "x86" - note "x86" stays lower-case). EnvironmentFromTarget
+// expects callers to supply a validated Target, so the default case (a plain
+// upper-case fallback) only matters for an out-of-band arch value.
 func windowsPlatformMachine(arch string) string {
 	switch arch {
 	case "amd64":

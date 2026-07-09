@@ -43,9 +43,20 @@ pypa/packaging (https://github.com/pypa/packaging), specifically
 packaging/_tokenizer.py's `Tokenizer`, `Token`, `ParserSyntaxError`, and
 `DEFAULT_RULES`, licensed under the Apache License, Version 2.0.
 
+The internal/pep508 package's marker-expression parser adapts the
+recursive-descent grammar of pypa/packaging
+(https://github.com/pypa/packaging), specifically packaging/_parser.py's
+marker productions (`_parse_marker` and friends) and `process_env_var`,
+licensed under the Apache License, Version 2.0.
+
 The marker/ package's Environment platform mapping (os_name, sys_platform,
 platform_system, platform_release, platform_version) adapts the
 linux/macos/windows cases of Astral uv's platform-tag logic
 (https://github.com/astral-sh/uv), specifically the uv-configuration crate's
 `TargetTriple`, dual-licensed under the Apache License, Version 2.0, or the
 MIT license.
+
+The marker/ package's Evaluate adapts the marker-evaluation logic of
+pypa/packaging (https://github.com/pypa/packaging), specifically
+packaging/markers.py's `_eval_op` and its operator/specifier dispatch,
+licensed under the Apache License, Version 2.0.

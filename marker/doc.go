@@ -10,6 +10,12 @@
 // represents "no marker clause" (always true), so callers never need to
 // nil-check before working with a Marker.
 //
-// TODO(#18637): implement Evaluate and the environment it evaluates
-// against.
+// Environment holds the 11 PEP 508 marker variables for one concrete
+// target; EnvironmentFromTarget builds one from a tags.Target plus the
+// InterpreterIdentity fields a Target alone cannot supply (the concrete
+// interpreter's implementation name and version). Marker's Evaluate method
+// then checks a parsed marker against a single concrete Environment and set
+// of active extras, following packaging's _eval_op dispatch: version
+// comparison for the four version-typed variables, set membership for
+// `extra`, and a generic string-operator fallback otherwise.
 package marker

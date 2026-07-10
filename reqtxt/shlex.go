@@ -4,7 +4,6 @@ package reqtxt
 
 import (
 	"fmt"
-	"unicode"
 )
 
 // shlexSplit splits line into words the way Python's shlex.split(line,
@@ -67,7 +66,7 @@ func shlexSplit(line string) ([]string, error) {
 		switch state {
 		case stateNormal:
 			switch {
-			case unicode.IsSpace(r):
+			case isShlexSpace(r):
 				endWord()
 			case r == '\'':
 				state = stateSingle
@@ -119,4 +118,18 @@ func shlexSplit(line string) ([]string, error) {
 
 	endWord()
 	return words, nil
+}
+
+// isShlexSpace reports whether r is a word separator under Python shlex's
+// default whitespace set (shlex.whitespace = " \t\r\n"). This is narrower
+// than unicode.IsSpace, which also treats '\v', '\f', NEL, NBSP, and other
+// Unicode Zs-category runes as whitespace; those must remain ordinary word
+// characters here to match Python's behavior.
+func isShlexSpace(r rune) bool {
+	switch r {
+	case ' ', '\t', '\r', '\n':
+		return true
+	default:
+		return false
+	}
 }

@@ -80,6 +80,16 @@ func TestShlexSplit(t *testing.T) {
 			line: `''`,
 			want: []string{""},
 		},
+		{
+			name: "form feed is not a word separator (unlike unicode.IsSpace)",
+			line: "a\x0cb",
+			want: []string{"a\x0cb"},
+		},
+		{
+			name: "vertical tab is not a word separator (unlike unicode.IsSpace)",
+			line: "a\vb",
+			want: []string{"a\vb"},
+		},
 	}
 
 	for _, c := range cases {
@@ -91,13 +101,15 @@ func TestShlexSplit(t *testing.T) {
 	}
 }
 
-func TestShlexSplit_UnterminatedQuote(t *testing.T) {
+func TestShlexSplit_Errors(t *testing.T) {
 	cases := []struct {
 		name string
 		line string
 	}{
 		{name: "unterminated double quote", line: `"abc`},
 		{name: "unterminated single quote", line: `'abc`},
+		{name: "trailing bare backslash after a word", line: `a\`},
+		{name: "bare backslash with nothing else", line: `\`},
 	}
 
 	for _, c := range cases {

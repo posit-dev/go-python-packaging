@@ -97,6 +97,52 @@ func TestFileString_FileOptions(t *testing.T) {
 	assert.Equal(t, []string{"x", "y"}, f2.FindLinks())
 }
 
+func TestFileString_UnknownFileOptionWithValue(t *testing.T) {
+	// Regression test: an unknown file-level option with a value must
+	// round-trip through the "=" form. A bare "--cert /etc/ssl/ca.pem"
+	// reparse would silently corrupt this into a boolean "--cert" plus a
+	// phantom UnnamedEntry for "/etc/ssl/ca.pem" (dispatchFileOption only
+	// recovers a value for an unrecognized flag from the inline "=value"
+	// form).
+	f, err := Parse("--cert=/etc/ssl/ca.pem")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	f2 := reparse(t, f)
+	require.Len(t, f2.Entries, 1, "expected exactly one entry, no phantom entry from misparsed value")
+
+	got, ok := f2.Entries[0].(*OptionEntry)
+	require.True(t, ok)
+	assert.Equal(t, "--cert", got.Name)
+	assert.Equal(t, "/etc/ssl/ca.pem", got.Value)
+}
+
+func TestFileString_KnownFileOptionValueWithSpace(t *testing.T) {
+	f, err := Parse(`--find-links "/opt/my links"`)
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	f2 := reparse(t, f)
+	require.Len(t, f2.Entries, 1)
+
+	assert.Equal(t, []string{"/opt/my links"}, f2.FindLinks())
+}
+
+func TestFileString_PerLineOptionRoundTrip(t *testing.T) {
+	f, err := Parse(`flask --config-settings=key=val`)
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	f2 := reparse(t, f)
+	require.Len(t, f2.Entries, 1)
+
+	got, ok := f2.Entries[0].(*RequirementEntry)
+	require.True(t, ok)
+	require.Len(t, got.Options, 1)
+	assert.Equal(t, "--config-settings", got.Options[0].Name)
+	assert.Equal(t, "key=val", got.Options[0].Value)
+}
+
 func TestFileString_UnnamedArchive(t *testing.T) {
 	f, err := Parse("foo-1.0.tar.gz")
 	require.NoError(t, err)

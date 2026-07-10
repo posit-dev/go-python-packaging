@@ -5,14 +5,38 @@ package reqtxt
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
-// commentRE matches pip's COMMENT_RE (pip/_internal/req/req_file.py):
-// "(^|\s+)#.*$". A '#' at the start of the line, or preceded by
-// whitespace, begins a comment that runs to end-of-line. A '#' that is
-// not whitespace-preceded (e.g. the fragment in
-// "git+https://h/p#egg=name") is left alone.
-var commentRE = regexp.MustCompile(`(^|\s+)#.*$`)
+// commentStartIndex returns the byte index of the '#' that begins a
+// comment in s, matching pip's COMMENT_RE (pip/_internal/req/req_file.py):
+// "(^|\s+)#.*$". A '#' at the start of s, or immediately preceded by a
+// rune for which unicode.IsSpace reports true, begins a comment that runs
+// to the end of s. A '#' that is not whitespace-preceded (e.g. the
+// fragment in "git+https://h/p#egg=name") is left alone. It returns -1 if
+// s contains no comment-starting '#'.
+//
+// This is implemented as a manual scan rather than a regexp because
+// Python's re module's "\s" (which pip's COMMENT_RE relies on) is
+// Unicode-aware, while Go's RE2 "\s" is ASCII-only - a regexp built on Go's
+// "\s" would miss a comment introduced after e.g. a non-breaking space,
+// form feed, or vertical tab.
+func commentStartIndex(s string) int {
+	for i, r := range s {
+		if r != '#' {
+			continue
+		}
+		if i == 0 {
+			return i
+		}
+		prev, _ := utf8.DecodeLastRuneInString(s[:i])
+		if unicode.IsSpace(prev) {
+			return i
+		}
+	}
+	return -1
+}
 
 // envVarRE matches pip's ENV_VAR_RE (pip/_internal/req/req_file.py):
 // `\$\{([A-Z0-9_]+)\}`. Only the uppercase form is recognized; a
@@ -77,7 +101,7 @@ type logicalLine struct {
 //     INLINE comment ending in "\" (e.g. "django # c \") is unaffected and
 //     still joins, matching pip: the guard only fires for a line that is a
 //     comment in its entirety.
-//  3. Strip comments per commentRE.
+//  3. Strip comments per commentStartIndex.
 //  4. Drop logical lines that are empty or all-whitespace once comments
 //     are stripped.
 //  5. Trim remaining surrounding whitespace.
@@ -102,7 +126,10 @@ func preprocess(content string, cfg parseConfig) ([]logicalLine, error) {
 		}
 		joining = false
 
-		text := commentRE.ReplaceAllString(joined.String(), "")
+		text := joined.String()
+		if i := commentStartIndex(text); i >= 0 {
+			text = text[:i]
+		}
 		text = strings.TrimSpace(text)
 		if text == "" {
 			return
@@ -138,13 +165,13 @@ func preprocess(content string, cfg parseConfig) ([]logicalLine, error) {
 }
 
 // isWholeLineComment reports whether physical is a whole-line comment: its
-// first non-whitespace character is "#". This is pip's join_lines guard
-// (COMMENT_RE.match(line), req_file.py:501) restated for our purposes: an
-// INLINE comment (preceded by non-whitespace content, e.g. "django # c")
-// does not match here and is not a whole-line comment, even though
-// commentRE itself would still strip it later.
+// first non-whitespace (per unicode.IsSpace) character is "#". This is
+// pip's join_lines guard (COMMENT_RE.match(line), req_file.py:501)
+// restated for our purposes: an INLINE comment (preceded by non-whitespace
+// content, e.g. "django # c") does not match here and is not a whole-line
+// comment, even though commentStartIndex would still strip it later.
 func isWholeLineComment(physical string) bool {
-	return strings.HasPrefix(strings.TrimLeft(physical, " \t"), "#")
+	return strings.HasPrefix(strings.TrimLeftFunc(physical, unicode.IsSpace), "#")
 }
 
 // normalizeLineEndings converts "\r\n" and lone "\r" to "\n", matching

@@ -112,6 +112,12 @@ func TestClassifyTargetVCSSchemePrefixes(t *testing.T) {
 	}
 }
 
+func TestClassifyTargetVCSSchemePrefixCaseInsensitive(t *testing.T) {
+	kind, ok := classifyTarget("Git+https://h/p")
+	assert.True(t, ok, `expected "Git+https://h/p" to classify as VCS`)
+	assert.Equal(t, KindVCS.String(), kind.String(), `expected "Git+https://h/p" to be KindVCS`)
+}
+
 func TestClassifyTargetArchiveExtensions(t *testing.T) {
 	for _, ext := range []string{".whl", ".tar.gz", ".tgz", ".tar.bz2", ".tar", ".zip"} {
 		tok := "pkg-1.0" + ext
@@ -141,6 +147,11 @@ func TestEggName(t *testing.T) {
 			name: "no fragment at all",
 			raw:  "./x",
 			want: "",
+		},
+		{
+			name: "vcs fragment with subdirectory before egg",
+			raw:  "git+https://h/p#subdirectory=src&egg=name",
+			want: "name",
 		},
 	}
 

@@ -110,6 +110,46 @@ func TestPreprocess_Comments(t *testing.T) {
 			content: "git+https://h/p#egg=n",
 			want:    []logicalLine{{text: "git+https://h/p#egg=n", line: 1}},
 		},
+		{
+			name:    "inline comment preceded by a non-breaking space is stripped",
+			content: "foo # a comment",
+			want:    []logicalLine{{text: "foo", line: 1}},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := preprocess(c.content, parseConfig{})
+			require.NoError(t, err)
+			assert.Equal(t, c.want, got)
+		})
+	}
+}
+
+// TestPreprocess_UnicodeWhitespaceWholeLineComment exercises the same
+// join_lines guard as TestPreprocess_WholeLineCommentContinuationGuard,
+// but with a whole-line comment led by Unicode (non-ASCII) whitespace -
+// form feed and vertical tab - which Go's RE2 "\s" does not recognize but
+// Python's (and thus pip's) "\s" does. Without Unicode-aware whole-line
+// detection, the leading "#" would not be seen as starting at the first
+// non-whitespace rune, the guard would not fire, and the trailing "\"
+// would incorrectly join and swallow the next physical line.
+func TestPreprocess_UnicodeWhitespaceWholeLineComment(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    []logicalLine
+	}{
+		{
+			name:    "form-feed-led whole-line comment ending in backslash does not swallow the next line",
+			content: "\f# c \\\nbar",
+			want:    []logicalLine{{text: "bar", line: 2}},
+		},
+		{
+			name:    "vertical-tab-led whole-line comment ending in backslash does not swallow the next line",
+			content: "\v# c \\\nbar",
+			want:    []logicalLine{{text: "bar", line: 2}},
+		},
 	}
 
 	for _, c := range cases {

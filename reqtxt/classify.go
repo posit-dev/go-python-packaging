@@ -40,13 +40,14 @@ var archiveExtensions = []string{".tar.gz", ".tar.bz2", ".whl", ".tgz", ".tar", 
 // filesystem-dependent fallback, so a bare name with no path/URL/archive
 // shape (e.g. "flask") always falls through to (_, false) here.
 func classifyTarget(tok string) (kind Kind, ok bool) {
+	lower := strings.ToLower(tok)
+
 	for _, prefix := range vcsSchemePrefixes {
-		if strings.HasPrefix(tok, prefix) {
+		if strings.HasPrefix(lower, prefix) {
 			return KindVCS, true
 		}
 	}
 
-	lower := strings.ToLower(tok)
 	for _, scheme := range urlSchemes {
 		if strings.HasPrefix(lower, scheme) {
 			return KindURL, true
@@ -67,22 +68,23 @@ func classifyTarget(tok string) (kind Kind, ok bool) {
 	return 0, false
 }
 
-// eggName returns the value of a "#egg=<name>" fragment on raw (pip's
-// legacy way of naming a VCS/URL requirement whose distribution name
-// can't otherwise be inferred; see pip's _egg_fragment in
-// pip/_internal/req/constructors.py). It returns "" if raw has no such
-// fragment. The fragment may be followed by additional "&"-separated
-// fragment parameters (e.g. "&subdirectory=..."), which are not part of
-// the returned name.
+// eggName returns the value of an "egg=<name>" fragment parameter on raw
+// (pip's legacy way of naming a VCS/URL requirement whose distribution
+// name can't otherwise be inferred; see pip's _egg_fragment in
+// pip/_internal/req/constructors.py). It returns "" if raw has no
+// fragment, or has a fragment with no "egg" parameter. The fragment
+// (the part of raw after the first "#") is treated as "&"-separated
+// "key=value" parameters, e.g. "#subdirectory=src&egg=name" - "egg" need
+// not be the first parameter.
 func eggName(raw string) string {
-	const marker = "#egg="
-	i := strings.Index(raw, marker)
+	i := strings.IndexByte(raw, '#')
 	if i < 0 {
 		return ""
 	}
-	rest := raw[i+len(marker):]
-	if j := strings.IndexByte(rest, '&'); j >= 0 {
-		return rest[:j]
+	for _, param := range strings.Split(raw[i+1:], "&") {
+		if name, ok := strings.CutPrefix(param, "egg="); ok {
+			return name
+		}
 	}
-	return rest
+	return ""
 }

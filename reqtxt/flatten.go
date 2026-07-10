@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"strings"
@@ -132,13 +133,25 @@ func decodeUTF8(raw []byte) string {
 // the file at referencedFrom, into the path Flatten will pass to open.
 // An absolute path (leading "/") or a scheme-bearing reference (e.g.
 // "https://...", "file://...") is passed through verbatim - open decides
-// how to fetch it. Otherwise, target is relative and is joined to
-// referencedFrom's directory using slash-based (path package) semantics
-// and cleaned, mirroring pip's os.path.join(os.path.dirname(filename),
-// req_path) but OS-independent.
+// how to fetch it. Otherwise, target is relative. If referencedFrom is
+// itself a URL (scheme-bearing), target is resolved against it using
+// net/url reference resolution (RFC 3986), since referencedFrom's
+// "directory" isn't a filesystem path: slash-based path.Dir/path.Join
+// would mangle the scheme (e.g. turning "https://host/reqs/root.txt" into
+// "https:/host/reqs", collapsing the double slash). Otherwise target is
+// joined to referencedFrom's directory using slash-based (path package)
+// semantics and cleaned, mirroring pip's
+// os.path.join(os.path.dirname(filename), req_path) but OS-independent.
 func resolveInclude(referencedFrom, target string) string {
 	if strings.HasPrefix(target, "/") || schemeRE.MatchString(target) {
 		return target
+	}
+	if schemeRE.MatchString(referencedFrom) {
+		if base, err := url.Parse(referencedFrom); err == nil {
+			if rel, err := url.Parse(target); err == nil {
+				return base.ResolveReference(rel).String()
+			}
+		}
 	}
 	return path.Clean(path.Join(path.Dir(referencedFrom), target))
 }

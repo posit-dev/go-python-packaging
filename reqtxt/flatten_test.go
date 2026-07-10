@@ -98,6 +98,33 @@ func TestFlatten_URLIncludeVerbatim(t *testing.T) {
 	assert.Contains(t, openedPaths, "https://h/x.txt")
 }
 
+func TestFlatten_URLRelativeInclude(t *testing.T) {
+	// A relative include target nested inside a URL-hosted file must be
+	// resolved against that URL (net/url reference resolution), not with
+	// slash-based path.Dir/path.Join - which would collapse "https://" to
+	// "https:/", producing a broken path.
+	var openedPaths []string
+	base := mapOpener(map[string][]byte{
+		"https://h/reqs/root.txt": []byte("-r more.txt\n"),
+		"https://h/reqs/more.txt": []byte("foo\n"),
+	})
+	open := func(path string) ([]byte, error) {
+		openedPaths = append(openedPaths, path)
+		return base(path)
+	}
+
+	f, err := Flatten("https://h/reqs/root.txt", open)
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "foo", re.Requirement.Name)
+
+	assert.Contains(t, openedPaths, "https://h/reqs/more.txt")
+	assert.NotContains(t, openedPaths, "https:/h/reqs/more.txt", "relative target must not be resolved with slash-based path semantics against a URL parent")
+}
+
 func TestFlatten_ConstraintPropagation(t *testing.T) {
 	f, err := Flatten("root.txt", mapOpener(map[string][]byte{
 		"root.txt":        []byte("-c constraints.txt\n-r r.txt\n"),

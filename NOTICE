@@ -67,3 +67,12 @@ The marker/ package's Evaluate adapts the marker-evaluation logic of
 pypa/packaging (https://github.com/pypa/packaging), specifically
 packaging/markers.py's `_eval_op` and its operator/specifier dispatch,
 licensed under the Apache License, Version 2.0.
+
+The reqtxt/ package adapts pip's requirements-file parsing behavior from
+pip (https://github.com/pypa/pip), specifically
+pip/_internal/req/req_file.py's `preprocess`/`join_lines` line-joining
+pipeline, `break_args_options`, `COMMENT_RE`, `ENV_VAR_RE`, and
+`_parse_and_recurse`'s include-following, licensed under the MIT license;
+and from Astral's uv (https://github.com/astral-sh/uv), specifically its
+uv-requirements crate, dual-licensed under the Apache License, Version
+2.0, or the MIT license.

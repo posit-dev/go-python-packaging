@@ -21,6 +21,73 @@ func TestParse_Requirement(t *testing.T) {
 	assert.Equal(t, "flask", re.Requirement.Name)
 }
 
+func TestParse_RequirementWithUnquotedWhitespaceInSpecifier(t *testing.T) {
+	// Regression test: Parse used to shlex-tokenize the whole logical
+	// line and require every token after tokens[0] to be a per-line
+	// option, so unquoted whitespace inside a version specifier ("Django
+	// >= 3.2, < 4.0") errored on ">=" looking like an unexpected token.
+	f, err := Parse("Django >= 3.2, < 4.0")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "Django", re.Requirement.Name)
+	assert.Equal(t, ">=3.2,<4.0", re.Requirement.Specifiers.String())
+}
+
+func TestParse_RequirementWithQuotedMarker(t *testing.T) {
+	// Regression test: naively rejoining shlex tokens does not fix this
+	// case, because shlex strips the marker's quotes, and the quotes are
+	// semantically significant in a PEP 508 marker (python_version >=
+	// "3.8" is a string comparison, not a bareword). Parse must pass the
+	// requirement text through to requirement.Parse verbatim.
+	f, err := Parse(`flask ; python_version >= "3.8"`)
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "flask", re.Requirement.Name)
+	assert.False(t, re.Requirement.Marker.IsEmpty())
+	assert.Contains(t, re.Requirement.Marker.String(), "python_version")
+}
+
+func TestParse_RequirementWithExtrasSpecifierAndHash(t *testing.T) {
+	f, err := Parse("requests[security] >= 2.0 --hash=sha256:abc")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "requests", re.Requirement.Name)
+	assert.Equal(t, []string{"security"}, re.Requirement.Extras)
+	assert.Equal(t, ">=2.0", re.Requirement.Specifiers.String())
+	require.Len(t, re.Hashes, 1)
+	assert.Equal(t, Hash{Algorithm: "sha256", Digest: "abc"}, re.Hashes[0])
+}
+
+func TestParse_URLRequirementNotSplitOnHyphenInFilename(t *testing.T) {
+	// Regression test: the requirement text must be classified/parsed
+	// as a whole, not mis-split at the "-" inside the wheel filename
+	// (breakArgsOptions only ever looks at whether a *token* starts with
+	// "-", never at a "-" occurring mid-token).
+	f, err := Parse("pkg @ https://h/x-1.0.whl")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "pkg", re.Requirement.Name)
+	assert.Equal(t, "https://h/x-1.0.whl", re.Requirement.URL)
+}
+
+func TestParse_ArityZeroKnownOptionRejectsValue(t *testing.T) {
+	_, err := Parse("--no-index=x")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidRequirementsFile)
+}
+
 func TestParse_Include(t *testing.T) {
 	cases := []struct {
 		name    string

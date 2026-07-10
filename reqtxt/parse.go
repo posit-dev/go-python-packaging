@@ -67,12 +67,7 @@ func Parse(content string, opts ...ParseOption) (*File, error) {
 
 	file := &File{}
 	for _, ll := range lines {
-		tokens, err := shlexSplit(ll.text)
-		if err != nil {
-			return nil, wrapLineErr(ll.line, err)
-		}
-
-		entries, err := dispatchLine(tokens, ll.line)
+		entries, err := dispatchLogicalLine(ll.text, ll.line)
 		if err != nil {
 			return nil, err
 		}
@@ -82,16 +77,46 @@ func Parse(content string, opts ...ParseOption) (*File, error) {
 	return file, nil
 }
 
+// dispatchLogicalLine routes one preprocessed logical line to the flag
+// path or the package path, deciding from the line's first
+// whitespace-delimited raw token - before any shlex tokenization happens.
+// This mirrors pip's req_file.process_line: pip never shlexes a
+// package/requirement line's args, only its trailing per-line options
+// (see break_args_options and dispatchPackageLine), because shlex would
+// strip quotes that are semantically significant in a "; marker" clause
+// and would choke on unquoted whitespace inside a version specifier.
+func dispatchLogicalLine(text string, lineNum int) ([]Entry, error) {
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		// preprocess already drops blank/all-whitespace logical lines;
+		// guard defensively in case that invariant ever changes.
+		return nil, nil
+	}
+
+	if strings.HasPrefix(fields[0], "-") {
+		tokens, err := shlexSplit(text)
+		if err != nil {
+			return nil, wrapLineErr(lineNum, err)
+		}
+		return dispatchLine(tokens, lineNum)
+	}
+
+	return dispatchPackageLine(text, lineNum)
+}
+
 // dispatchLine dispatches the tokens of one (recursive tail of a) logical
-// line into zero or more Entry values, per pip's break_args_options: the
-// leading token determines the entry kind. For the plain file-option
-// branch only, any tokens left over after that flag's own value (if any)
-// are dispatched again as if they began a new line — so e.g. an
-// unrecognized boolean flag followed by a requirement ("--frob foo")
-// yields two entries, rather than the flag swallowing "foo" as its value.
-// The include/editable/package branches instead consume the *entire*
-// remaining token stream for their own per-line options (hashes, etc.)
-// and never recurse.
+// line into zero or more Entry values: the leading token determines the
+// entry kind. It is reached only for lines whose first raw token starts
+// with "-" (see dispatchLogicalLine) - -r/-c/-e, a known file option, or
+// an unrecognized flag - never for a package/requirement line, which
+// dispatchPackageLine handles without shlex-tokenizing the whole line.
+// For the plain file-option branch only, any tokens left over after that
+// flag's own value (if any) are dispatched again as if they began a new
+// line — so e.g. an unrecognized boolean flag followed by a requirement
+// ("--frob foo") yields two entries, rather than the flag swallowing
+// "foo" as its value. The include/editable/package branches instead
+// consume the *entire* remaining token stream for their own per-line
+// options (hashes, etc.) and never recurse.
 func dispatchLine(tokens []string, lineNum int) ([]Entry, error) {
 	if len(tokens) == 0 {
 		return nil, nil
@@ -183,15 +208,20 @@ func dispatchFileOption(name string, hasEq bool, eqValue string, rest []string, 
 
 	if spec, known := knownOptions[name]; known {
 		name = spec.long
-		if spec.arity == 1 {
+		switch {
+		case spec.arity == 1:
 			var err error
 			value, remaining, err = takeValue(name, hasEq, eqValue, rest, lineNum)
 			if err != nil {
 				return nil, err
 			}
-		} else {
-			// A boolean known option never consumes a following token,
-			// even if it happened to be written with "=".
+		case hasEq:
+			// A known boolean (arity-0) option given an "=value" is
+			// invalid, matching pip optparse's rejection of a value for
+			// an option that doesn't take one (e.g. "--no-index=x").
+			return nil, lineError(lineNum, "%s does not take a value", name)
+		default:
+			// A boolean known option never consumes a following token.
 			value, remaining = eqValue, rest
 		}
 	} else {
@@ -240,6 +270,78 @@ func dispatchPackage(first string, rest []string, lineNum int) ([]Entry, error) 
 	}
 
 	return []Entry{entry}, nil
+}
+
+// dispatchPackageLine handles a package/requirement logical line - one
+// whose first raw token does not start with "-" (see
+// dispatchLogicalLine). It mirrors pip's break_args_options
+// (pip/_internal/req/req_file.py): pip does NOT shlex-tokenize a
+// package line's requirement text, only its trailing per-line options,
+// because shlex would strip the quotes that are semantically
+// significant in a "; marker" clause (e.g. `python_version >= "3.8"`)
+// and would choke on the unquoted whitespace that's perfectly legal
+// inside a version specifier (e.g. "Django >= 3.2, < 4.0"). The
+// requirement/target text is passed to classifyTarget/requirement.Parse
+// verbatim; only the options tail is shlex-tokenized and attached via
+// attachReqOptions, exactly as dispatchPackage does for a package tail
+// reached via token recursion.
+func dispatchPackageLine(line string, lineNum int) ([]Entry, error) {
+	argsText, optionsText := breakArgsOptions(line)
+
+	// dispatchLogicalLine only calls dispatchPackageLine when line's
+	// first raw token doesn't start with "-", so breakArgsOptions always
+	// leaves at least that one token in argsText.
+	argFirst := strings.Fields(argsText)[0]
+
+	var (
+		entry   Entry
+		hashes  *[]Hash
+		options *[]OptionEntry
+	)
+
+	if kind, ok := classifyTarget(argFirst); ok {
+		e := &UnnamedEntry{Raw: argsText, Kind: kind, EggName: eggName(argsText)}
+		entry, hashes, options = e, &e.Hashes, &e.Options
+	} else {
+		req, err := requirement.Parse(argsText)
+		if err != nil {
+			return nil, wrapLineErr(lineNum, err)
+		}
+		e := &RequirementEntry{Requirement: req}
+		entry, hashes, options = e, &e.Hashes, &e.Options
+	}
+
+	optTokens, err := shlexSplit(optionsText)
+	if err != nil {
+		return nil, wrapLineErr(lineNum, err)
+	}
+	if err := attachReqOptions(hashes, options, optTokens, lineNum); err != nil {
+		return nil, err
+	}
+
+	return []Entry{entry}, nil
+}
+
+// breakArgsOptions splits a package/requirement logical line into its
+// requirement text ("args") and its per-line options tail ("options"),
+// per pip's break_args_options (pip/_internal/req/req_file.py): pip
+// plain-splits the line on whitespace and takes every leading token that
+// doesn't start with "-" as part of the requirement, stopping at the
+// first token that does - everything from there on is the options tail.
+// Both halves are returned re-joined with single spaces (not the
+// original, possibly irregular, whitespace), matching pip's
+// ' '.join(...) of each half.
+func breakArgsOptions(line string) (args string, options string) {
+	fields := strings.Fields(line)
+
+	i := 0
+	for ; i < len(fields); i++ {
+		if strings.HasPrefix(fields[i], "-") {
+			break
+		}
+	}
+
+	return strings.Join(fields[:i], " "), strings.Join(fields[i:], " ")
 }
 
 // attachReqOptions consumes every token in tokens as a per-requirement

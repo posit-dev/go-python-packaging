@@ -32,9 +32,11 @@ type RequirementEntry struct {
 	Requirement requirement.Requirement
 	Hashes      []Hash
 	Options     []OptionEntry
-	// Constraint is true if this entry came from a file included via
-	// "-c"/"--constraint" (or transitively from one), rather than
-	// "-r"/"--requirement" or the top-level file.
+	// Constraint is true when the file this entry appears in was included
+	// via "-c"/"--constraint". Constraint-ness is set by the immediate
+	// include directive (per pip's req_file._parse_and_recurse); it is NOT
+	// inherited through nested includes, so a "-r" nested inside a "-c" file
+	// yields non-constraint entries. Set by Flatten; false after Parse alone.
 	Constraint bool
 }
 
@@ -63,9 +65,11 @@ type UnnamedEntry struct {
 	EggName string
 	Hashes  []Hash
 	Options []OptionEntry
-	// Constraint is true if this entry came from a file included via
-	// "-c"/"--constraint" (or transitively from one), rather than
-	// "-r"/"--requirement" or the top-level file.
+	// Constraint is true when the file this entry appears in was included
+	// via "-c"/"--constraint". Constraint-ness is set by the immediate
+	// include directive (per pip's req_file._parse_and_recurse); it is NOT
+	// inherited through nested includes, so a "-r" nested inside a "-c" file
+	// yields non-constraint entries. Set by Flatten; false after Parse alone.
 	Constraint bool
 }
 

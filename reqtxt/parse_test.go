@@ -246,6 +246,42 @@ func TestParse_BareArchiveIsUnnamed(t *testing.T) {
 	assert.Equal(t, "foo-1.0.tar.gz", ue.Raw)
 }
 
+func TestParse_DirectReferenceRejectsMarker(t *testing.T) {
+	// Regression test: UnnamedEntry has no Marker field, so a "; marker"
+	// clause (or any other trailing content) trailing a bare VCS/URL/
+	// archive/path target must be rejected rather than silently glued
+	// into Raw/EggName.
+	_, err := Parse(`./local/pkg ; python_version >= "3.8"`)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrInvalidRequirementsFile))
+
+	// A clean, single-token direct-reference target is still fine.
+	f, err := Parse("./local/pkg")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	ue, ok := f.Entries[0].(*UnnamedEntry)
+	require.True(t, ok, "want *UnnamedEntry, got %T", f.Entries[0])
+	assert.Equal(t, KindLocalPath, ue.Kind)
+	assert.Equal(t, "./local/pkg", ue.Raw)
+}
+
+func TestParse_QuotedDashInMarkerIsNotAnOptionsTail(t *testing.T) {
+	// Regression test: breakArgsOptions splits the options tail at the
+	// first *token* that starts with "-". The quoted marker value
+	// "-bar" is one shlex-atom, `"-bar"`, whose first character is a
+	// quote, not a dash, so it must stay part of the requirement args
+	// and not be mistaken for the start of a per-line options tail.
+	f, err := Parse(`foo ; extra == "-bar"`)
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "foo", re.Requirement.Name)
+	assert.False(t, re.Requirement.Marker.IsEmpty())
+}
+
 func TestParse_Env(t *testing.T) {
 	lookup := func(name string) (string, bool) {
 		if name == "TOKEN" {

@@ -300,6 +300,17 @@ func dispatchPackageLine(line string, lineNum int) ([]Entry, error) {
 	)
 
 	if kind, ok := classifyTarget(argFirst); ok {
+		// A bare target (VCS/URL/archive/path) must be the line's only
+		// argument token. UnnamedEntry has no Marker field, so any
+		// trailing content here - almost always a "; marker" clause, e.g.
+		// "./local/pkg ; python_version >= \"3.8\"" - can't be represented
+		// and would otherwise get silently glued onto Raw/EggName,
+		// corrupting the target. PEP 508 markers are only supported on
+		// named requirements, which route through requirement.Parse
+		// below. Reject instead of silently truncating/corrupting.
+		if fields := strings.Fields(argsText); len(fields) != 1 {
+			return nil, lineError(lineNum, "direct-reference requirement %q does not support markers or trailing content", argsText)
+		}
 		e := &UnnamedEntry{Raw: argsText, Kind: kind, EggName: eggName(argsText)}
 		entry, hashes, options = e, &e.Hashes, &e.Options
 	} else {

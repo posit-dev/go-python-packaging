@@ -67,7 +67,16 @@ type logicalLine struct {
 //  2. Join backslash continuations: a physical line ending in "\"
 //     concatenates directly to the next physical line, with NO separator
 //     inserted (the trailing "\" is simply removed). The joined logical
-//     line's line number is that of its first physical segment.
+//     line's line number is that of its first physical segment. A
+//     WHOLE-LINE comment (one whose first non-whitespace character is "#")
+//     is never treated as a continuation, even if it ends in "\": pip's
+//     join_lines guards on COMMENT_RE.match(line) (req_file.py:501) before
+//     honoring a trailing backslash, so a line like "# note \" ends its own
+//     logical line (and, being a comment, is then dropped by step 3/4)
+//     rather than swallowing the next physical line into the comment. An
+//     INLINE comment ending in "\" (e.g. "django # c \") is unaffected and
+//     still joins, matching pip: the guard only fires for a line that is a
+//     comment in its entirety.
 //  3. Strip comments per commentRE.
 //  4. Drop logical lines that are empty or all-whitespace once comments
 //     are stripped.
@@ -113,7 +122,7 @@ func preprocess(content string, cfg parseConfig) ([]logicalLine, error) {
 			joined.Reset()
 		}
 
-		if rest, ok := strings.CutSuffix(physical, `\`); ok {
+		if rest, ok := strings.CutSuffix(physical, `\`); ok && !isWholeLineComment(physical) {
 			joined.WriteString(rest)
 			continue
 		}
@@ -126,6 +135,16 @@ func preprocess(content string, cfg parseConfig) ([]logicalLine, error) {
 	flush()
 
 	return lines, nil
+}
+
+// isWholeLineComment reports whether physical is a whole-line comment: its
+// first non-whitespace character is "#". This is pip's join_lines guard
+// (COMMENT_RE.match(line), req_file.py:501) restated for our purposes: an
+// INLINE comment (preceded by non-whitespace content, e.g. "django # c")
+// does not match here and is not a whole-line comment, even though
+// commentRE itself would still strip it later.
+func isWholeLineComment(physical string) bool {
+	return strings.HasPrefix(strings.TrimLeft(physical, " \t"), "#")
 }
 
 // normalizeLineEndings converts "\r\n" and lone "\r" to "\n", matching

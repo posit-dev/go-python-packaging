@@ -41,6 +41,54 @@ func TestPreprocess_Continuations(t *testing.T) {
 	}
 }
 
+// TestPreprocess_WholeLineCommentContinuationGuard exercises pip's
+// join_lines guard (req_file.py:501): "if not line.endswith('\\') or
+// COMMENT_RE.match(line)" - a physical line ending in "\" is NOT a
+// continuation when it is itself a whole-line comment (COMMENT_RE matches
+// at position 0, i.e. the first non-whitespace character is "#"). Without
+// this guard, a trailing "\" on a comment line joins the next physical
+// line directly onto the comment text, so by the time comments are
+// stripped the entire logical line - including whatever followed the
+// comment - is gone: e.g. "# TODO: pin this \" + "django" joins to
+// "# TODO: pin this django", which commentRE then strips to nothing,
+// silently discarding the "django" requirement pip would still install.
+func TestPreprocess_WholeLineCommentContinuationGuard(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    []logicalLine
+	}{
+		{
+			name:    "whole-line comment ending in backslash does not swallow the next line",
+			content: "# TODO: pin this \\\ndjango",
+			want:    []logicalLine{{text: "django", line: 2}},
+		},
+		{
+			name:    "indented whole-line comment ending in backslash does not swallow the next line",
+			content: "  # c \\\nbar",
+			want:    []logicalLine{{text: "bar", line: 2}},
+		},
+		{
+			name:    "regression: an ordinary continuation still joins",
+			content: "foo==\\\n1.0",
+			want:    []logicalLine{{text: "foo==1.0", line: 1}},
+		},
+		{
+			name:    "regression: an inline comment ending in backslash still joins (not a whole-line comment)",
+			content: "django # c \\\nfoo",
+			want:    []logicalLine{{text: "django", line: 1}},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := preprocess(c.content, parseConfig{})
+			require.NoError(t, err)
+			assert.Equal(t, c.want, got)
+		})
+	}
+}
+
 func TestPreprocess_Comments(t *testing.T) {
 	cases := []struct {
 		name    string

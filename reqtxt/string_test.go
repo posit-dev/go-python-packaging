@@ -143,6 +143,61 @@ func TestFileString_PerLineOptionRoundTrip(t *testing.T) {
 	assert.Equal(t, "key=val", got.Options[0].Value)
 }
 
+func TestFileString_EmptyValueOptionRoundTrips(t *testing.T) {
+	// Regression test: a value-taking option given an explicitly empty
+	// value (e.g. "--index-url=") must round-trip through the explicit
+	// '<name>=""' form. Rendering it as a bare "--index-url" would reparse
+	// as arity-1 with no value supplied at all, which is an error (the
+	// option "requires a value"), so Parse(f.String()) would fail.
+	f, err := Parse("--index-url=")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	rendered := f.String()
+	f2, err := Parse(rendered)
+	require.NoError(t, err, "reparsing rendered content failed: %q", rendered)
+	require.Len(t, f2.Entries, 1)
+
+	got, ok := f2.Entries[0].(*OptionEntry)
+	require.True(t, ok)
+	assert.Equal(t, "--index-url", got.Name)
+	assert.Equal(t, "", got.Value)
+}
+
+func TestFileString_EmptyValuePerLineOptionRoundTrips(t *testing.T) {
+	f, err := Parse("flask --global-option=")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	rendered := f.String()
+	f2, err := Parse(rendered)
+	require.NoError(t, err, "reparsing rendered content failed: %q", rendered)
+	require.Len(t, f2.Entries, 1)
+
+	got, ok := f2.Entries[0].(*RequirementEntry)
+	require.True(t, ok)
+	require.Len(t, got.Options, 1)
+	assert.Equal(t, "--global-option", got.Options[0].Name)
+	assert.Equal(t, "", got.Options[0].Value)
+}
+
+func TestFileString_BooleanOptionStillRendersBare(t *testing.T) {
+	// A genuinely boolean (arity-0) option with an empty Value must still
+	// render as a bare flag, not "--no-index=\"\"": only value-taking
+	// options need the explicit empty-value form.
+	f, err := Parse("--no-index")
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	rendered := f.String()
+	assert.Equal(t, "--no-index", rendered)
+
+	f2, err := Parse(rendered)
+	require.NoError(t, err)
+	require.Len(t, f2.Entries, 1)
+	assert.True(t, f2.NoIndex())
+}
+
 func TestFileString_UnnamedArchive(t *testing.T) {
 	f, err := Parse("foo-1.0.tar.gz")
 	require.NoError(t, err)

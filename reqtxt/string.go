@@ -80,12 +80,38 @@ func writeReqOptions(b *strings.Builder, hashes []Hash, options []OptionEntry) {
 
 // renderOption renders an OptionEntry (file-level or per-line) as
 // "<name>=<value>" (quoting value via quoteIfNeeded so it survives shlex
-// re-tokenization), or bare "<name>" when Value is empty.
+// re-tokenization), or bare "<name>" when Value is empty - unless name
+// identifies a value-taking option (isValueTakingOption), in which case an
+// empty Value is rendered as the explicit "<name>=\"\"" form instead of a
+// bare flag. Without this, an empty value on a value-taking option (e.g.
+// Parse("--index-url=") or a per-line "--global-option=") would render
+// indistinguishably from a boolean flag, and reparsing the bare form would
+// hit that option's "requires a value" arity check - breaking the
+// Parse(f.String()) round trip. A genuinely boolean/arity-0 option (or an
+// unrecognized bare flag) with Value == "" is unaffected and still renders
+// bare, matching its actual on-the-wire form.
 func renderOption(o OptionEntry) string {
 	if o.Value == "" {
+		if isValueTakingOption(o.Name) {
+			return o.Name + `=""`
+		}
 		return o.Name
 	}
 	return o.Name + "=" + quoteIfNeeded(o.Value)
+}
+
+// isValueTakingOption reports whether name (an OptionEntry.Name) identifies
+// an option that takes a value: a known file-level option with arity 1
+// (knownOptions, defined in parse.go), or a per-requirement value option
+// (perLineValueOptions, also parse.go). Both tables are keyed by an
+// option's canonical spelling, which is exactly what dispatchFileOption and
+// attachReqOptions ever store into OptionEntry.Name, so a direct lookup by
+// name is sufficient here.
+func isValueTakingOption(name string) bool {
+	if spec, ok := knownOptions[name]; ok {
+		return spec.arity == 1
+	}
+	return perLineValueOptions[name]
 }
 
 // quoteIfNeeded returns s unchanged if it contains no shlex-significant

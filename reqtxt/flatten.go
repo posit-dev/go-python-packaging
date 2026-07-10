@@ -50,7 +50,9 @@ func Flatten(root string, open func(path string) ([]byte, error), opts ...ParseO
 // flattenWalk parses the file at p and recursively expands its includes,
 // returning the flattened entries it (transitively) contributes.
 // constraintCtx is true if p was itself reached via a "-c"/"--constraint"
-// include (or transitively from one); visited is the set of resolved
+// include - specifically the immediate include directive that pulled p in,
+// not any ancestor further up the include chain (see childConstraint below);
+// visited is the set of resolved
 // paths on the CURRENT recursion stack, used for cycle detection - a
 // diamond (the same file reached via two different, non-overlapping
 // branches) is fine and yields its entries twice (see the double-inclusion
@@ -81,22 +83,19 @@ func flattenWalk(p string, constraintCtx bool, visited map[string]bool, open fun
 		case *IncludeEntry:
 			target := resolveInclude(p, v.Path)
 
-			// childConstraint: the transitive-closure interpretation - once
-			// the walk crosses a "-c" edge, every entry below stays a
-			// constraint, even a further "-r" nested inside the
-			// "-c"-included file. This is the design's stated default
-			// (docs/rfds design note, task 7 spec), NOT what pip itself
-			// does: verified against pip._internal.req.req_file
-			// (RequirementsFileParser._parse_and_recurse), pip computes
-			// nested_constraint solely from the include *directive*
-			// ("-r" vs "-c") that reached the nested file, without OR-ing
-			// in the ambient constraint flag of the referencing file - so
-			// pip actually RESETS constraint-ness on a "-r" nested inside
-			// a "-c" file, rather than inheriting it. This is a deliberate,
-			// documented divergence for this package; confirm/reconcile
-			// against pip's exact rule at PPM-cutover time if constraint
-			// semantics for deeply-nested includes end up load-bearing.
-			childConstraint := constraintCtx || v.Constraint
+			// childConstraint is set solely by the immediate include
+			// directive that reached the nested file, matching pip:
+			// pip._internal.req.req_file.RequirementsFileParser
+			// ._parse_and_recurse sets nested_constraint = False for a
+			// "-r"/"--requirement" directive and nested_constraint = True
+			// for a "-c"/"--constraint" directive, then recurses with that
+			// value alone - it is never OR'd with the ambient constraint
+			// flag of the referencing file. So a "-r" nested inside a
+			// "-c"-included file RESETS constraint-ness to false for
+			// everything below it, while a "-c" nested inside a
+			// "-r"-included file sets it to true regardless of the outer
+			// context.
+			childConstraint := v.Constraint
 
 			children, err := flattenWalk(target, childConstraint, visited, open, opts)
 			if err != nil {

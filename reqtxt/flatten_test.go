@@ -121,12 +121,13 @@ func TestFlatten_ConstraintPropagation(t *testing.T) {
 	assert.False(t, byName["baz"].Constraint, "baz came in via -r, should not be a constraint")
 }
 
-func TestFlatten_NestedRequirementUnderConstraint(t *testing.T) {
-	// Design/task-spec default: transitive closure. Once the walk crosses
-	// a -c edge, constraint-ness stays true for everything below,
-	// including a further -r nested inside the -c-included file. See the
-	// code comment on walk's childConstraint computation in flatten.go
-	// for the verified pip divergence.
+func TestFlatten_NestedRequirementUnderConstraintResets(t *testing.T) {
+	// Matches pip: constraint-ness is set solely by the immediate include
+	// directive that pulled a file in, not inherited from an ancestor. A
+	// -r nested inside a -c-included file RESETS constraint-ness to
+	// false. See pip._internal.req.req_file.RequirementsFileParser
+	// ._parse_and_recurse and the code comment on flattenWalk's
+	// childConstraint computation in flatten.go.
 	f, err := Flatten("root.txt", mapOpener(map[string][]byte{
 		"root.txt": []byte("-c c.txt\n"),
 		"c.txt":    []byte("-r more.txt\n"),
@@ -138,7 +139,25 @@ func TestFlatten_NestedRequirementUnderConstraint(t *testing.T) {
 	re, ok := f.Entries[0].(*RequirementEntry)
 	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
 	assert.Equal(t, "qux", re.Requirement.Name)
-	assert.True(t, re.Constraint, "qux is nested under a -c include, transitive-closure default => Constraint true")
+	assert.False(t, re.Constraint, "qux is nested under -c via a -r directive, which resets Constraint to false")
+}
+
+func TestFlatten_NestedConstraintUnderRequirementSets(t *testing.T) {
+	// Symmetric case: a -c nested inside a -r-included file sets
+	// constraint-ness to true, regardless of the outer (non-constraint)
+	// context.
+	f, err := Flatten("root.txt", mapOpener(map[string][]byte{
+		"root.txt":  []byte("-r r.txt\n"),
+		"r.txt":     []byte("-c inner.txt\n"),
+		"inner.txt": []byte("zap\n"),
+	}))
+	require.NoError(t, err)
+	require.Len(t, f.Entries, 1)
+
+	re, ok := f.Entries[0].(*RequirementEntry)
+	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
+	assert.Equal(t, "zap", re.Requirement.Name)
+	assert.True(t, re.Constraint, "zap is nested under -r via a -c directive, which sets Constraint to true")
 }
 
 func TestFlatten_DoubleInclusionNoDedup(t *testing.T) {

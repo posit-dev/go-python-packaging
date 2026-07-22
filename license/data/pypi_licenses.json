@@ -1,0 +1,506 @@
+[
+  {
+    "Classifier": "License :: Free For Home Use",
+    "Name": "Free For Home Use",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Eclipse Public License 1.0 (EPL-1.0)",
+    "Name": "Eclipse Public License 1.0 (EPL-1.0)",
+    "SPDXIdentifier": "EPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Name": "GNU General Public License v2 (GPLv2)",
+    "SPDXIdentifier": "GPL-2.0-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Universal Permissive License (UPL)",
+    "Name": "Universal Permissive License (UPL)",
+    "SPDXIdentifier": "UPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: Free For Educational Use",
+    "Name": "Free For Educational Use",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: BSD License",
+    "Name": "BSD License",
+    "SPDXIdentifier": "BSD-3-Clause",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Common Public License",
+    "Name": "Common Public License",
+    "SPDXIdentifier": "CPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Eclipse Public License 2.0 (EPL-2.0)",
+    "Name": "Eclipse Public License 2.0 (EPL-2.0)",
+    "SPDXIdentifier": "EPL-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Attribution Assurance License",
+    "Name": "Attribution Assurance License",
+    "SPDXIdentifier": "AAL",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
+    "Name": "GNU Lesser General Public License v2 or later (LGPLv2+)",
+    "SPDXIdentifier": "LGPL-2.0-or-later",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
+    "Name": "CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
+    "SPDXIdentifier": "CC0-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: MIT License",
+    "Name": "MIT License",
+    "SPDXIdentifier": "MIT",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Qt Public License (QPL)",
+    "Name": "Qt Public License (QPL)",
+    "SPDXIdentifier": "QPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: SIL Open Font License 1.1 (OFL-1.1)",
+    "Name": "SIL Open Font License 1.1 (OFL-1.1)",
+    "SPDXIdentifier": "OFL-1.1",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Name": "Mozilla Public License 2.0 (MPL 2.0)",
+    "SPDXIdentifier": "MPL-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: The Unlicense (Unlicense)",
+    "Name": "The Unlicense (Unlicense)",
+    "SPDXIdentifier": "Unlicense",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: IBM Public License",
+    "Name": "IBM Public License",
+    "SPDXIdentifier": "IPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Name": "GNU General Public License v3 (GPLv3)",
+    "SPDXIdentifier": "GPL-3.0-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Mozilla Public License 1.1 (MPL 1.1)",
+    "Name": "Mozilla Public License 1.1 (MPL 1.1)",
+    "SPDXIdentifier": "MPL-1.1",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Lesser General Public License v2 (LGPLv2)",
+    "Name": "GNU Lesser General Public License v2 (LGPLv2)",
+    "SPDXIdentifier": "LGPL-2.0-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Boost Software License 1.0 (BSL-1.0)",
+    "Name": "Boost Software License 1.0 (BSL-1.0)",
+    "SPDXIdentifier": "BSL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: PostgreSQL License",
+    "Name": "PostgreSQL License",
+    "SPDXIdentifier": "PostgreSQL",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: University of Illinois/NCSA Open Source License",
+    "Name": "University of Illinois/NCSA Open Source License",
+    "SPDXIdentifier": "NCSA",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Ricoh Source Code Public License",
+    "Name": "Ricoh Source Code Public License",
+    "SPDXIdentifier": "RSCPL",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Nethack General Public License",
+    "Name": "Nethack General Public License",
+    "SPDXIdentifier": "NGPL",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Name": "GNU Affero General Public License v3",
+    "SPDXIdentifier": "AGPL-3.0-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: ISC License (ISCL)",
+    "Name": "ISC License (ISCL)",
+    "SPDXIdentifier": "ISC",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: Public Domain",
+    "Name": "Public Domain",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Name": "GNU Lesser General Public License v3 (LGPLv3)",
+    "SPDXIdentifier": "LGPL-3.0-or-later",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Zope Public License",
+    "Name": "Zope Public License",
+    "SPDXIdentifier": "ZPL-2.1",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: X.Net License",
+    "Name": "X.Net License",
+    "SPDXIdentifier": "Xnet",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Jabber Open Source License",
+    "Name": "Jabber Open Source License",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Eiffel Forum License",
+    "Name": "Eiffel Forum License",
+    "SPDXIdentifier": "EFL-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Motosoto License",
+    "Name": "Motosoto License",
+    "SPDXIdentifier": "Motosoto",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Name": "GNU Affero General Public License v3 or later (AGPLv3+)",
+    "SPDXIdentifier": "AGPL-3.0-or-later",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved",
+    "Name": "OSI Approved",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Mulan Permissive Software License v2 (MulanPSL-2.0)",
+    "Name": "Mulan Permissive Software License v2 (MulanPSL-2.0)",
+    "SPDXIdentifier": "MulanPSL-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Python Software Foundation License",
+    "Name": "Python Software Foundation License",
+    "SPDXIdentifier": "PSF-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: GUST Font License 2006-09-30",
+    "Name": "GUST Font License 2006-09-30",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: Freely Distributable",
+    "Name": "Freely Distributable",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: Repoze Public License",
+    "Name": "Repoze Public License",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: Netscape Public License (NPL)",
+    "Name": "Netscape Public License (NPL)",
+    "SPDXIdentifier": "NPL-1.1",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
+    "Name": "European Union Public Licence 1.2 (EUPL 1.2)",
+    "SPDXIdentifier": "EUPL-1.2",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+    "Name": "GNU General Public License v2 or later (GPLv2+)",
+    "SPDXIdentifier": "GPL-2.0-or-later",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: Nokia Open Source License (NOKOS)",
+    "Name": "Nokia Open Source License (NOKOS)",
+    "SPDXIdentifier": "Nokia",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Free Documentation License (FDL)",
+    "Name": "GNU Free Documentation License (FDL)",
+    "SPDXIdentifier": "GFDL-1.3-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: MITRE Collaborative Virtual Workspace License (CVW)",
+    "Name": "MITRE Collaborative Virtual Workspace License (CVW)",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: W3C License",
+    "Name": "W3C License",
+    "SPDXIdentifier": "W3C",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Apache Software License",
+    "Name": "Apache Software License",
+    "SPDXIdentifier": "Apache-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Mozilla Public License 1.0 (MPL)",
+    "Name": "Mozilla Public License 1.0 (MPL)",
+    "SPDXIdentifier": "MPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Artistic License",
+    "Name": "Artistic License",
+    "SPDXIdentifier": "Artistic-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: CEA CNRS Inria Logiciel Libre License, version 2.1 (CeCILL-2.1)",
+    "Name": "CEA CNRS Inria Logiciel Libre License, version 2.1 (CeCILL-2.1)",
+    "SPDXIdentifier": "CECILL-2.1",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Open Software License 3.0 (OSL-3.0)",
+    "Name": "Open Software License 3.0 (OSL-3.0)",
+    "SPDXIdentifier": "OSL-3.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Academic Free License (AFL)",
+    "Name": "Academic Free License (AFL)",
+    "SPDXIdentifier": "AFL-3.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: DFSG approved",
+    "Name": "DFSG approved",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: Eiffel Forum License (EFL)",
+    "Name": "Eiffel Forum License (EFL)",
+    "SPDXIdentifier": "EFL-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: zlib/libpng License",
+    "Name": "zlib/libpng License",
+    "SPDXIdentifier": "Zlib",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Historical Permission Notice and Disclaimer (HPND)",
+    "Name": "Historical Permission Notice and Disclaimer (HPND)",
+    "SPDXIdentifier": "HPND",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Sleepycat License",
+    "Name": "Sleepycat License",
+    "SPDXIdentifier": "Sleepycat",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Name": "GNU General Public License (GPL)",
+    "SPDXIdentifier": "GPL-3.0-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Nokia Open Source License",
+    "Name": "Nokia Open Source License",
+    "SPDXIdentifier": "Nokia",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: Freeware",
+    "Name": "Freeware",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: Other/Proprietary License",
+    "Name": "Other/Proprietary License",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: CeCILL-C Free Software License Agreement (CECILL-C)",
+    "Name": "CeCILL-C Free Software License Agreement (CECILL-C)",
+    "SPDXIdentifier": "CECILL-C",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Common Development and Distribution License 1.0 (CDDL-1.0)",
+    "Name": "Common Development and Distribution License 1.0 (CDDL-1.0)",
+    "SPDXIdentifier": "CDDL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: CeCILL-B Free Software License Agreement (CECILL-B)",
+    "Name": "CeCILL-B Free Software License Agreement (CECILL-B)",
+    "SPDXIdentifier": "CECILL-B",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: Aladdin Free Public License (AFPL)",
+    "Name": "Aladdin Free Public License (AFPL)",
+    "SPDXIdentifier": "Aladdin",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Sun Public License",
+    "Name": "Sun Public License",
+    "SPDXIdentifier": "SPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Apple Public Source License",
+    "Name": "Apple Public Source License",
+    "SPDXIdentifier": "APSL-2.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
+    "Name": "GNU Library or Lesser General Public License (LGPL)",
+    "SPDXIdentifier": "LGPL-3.0-only",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: MIT No Attribution License (MIT-0)",
+    "Name": "MIT No Attribution License (MIT-0)",
+    "SPDXIdentifier": "MIT-0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Intel Open Source License",
+    "Name": "Intel Open Source License",
+    "SPDXIdentifier": "Intel",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Name": "GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "SPDXIdentifier": "LGPL-3.0-or-later",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Python License (CNRI Python License)",
+    "Name": "Python License (CNRI Python License)",
+    "SPDXIdentifier": "CNRI-Python",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: Free for non-commercial use",
+    "Name": "Free for non-commercial use",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Open Group Test Suite License",
+    "Name": "Open Group Test Suite License",
+    "SPDXIdentifier": "OGTSL",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: European Union Public Licence 1.1 (EUPL 1.1)",
+    "Name": "European Union Public Licence 1.1 (EUPL 1.1)",
+    "SPDXIdentifier": "EUPL-1.1",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Sun Industry Standards Source License (SISSL)",
+    "Name": "Sun Industry Standards Source License (SISSL)",
+    "SPDXIdentifier": "SISSL-1.2",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: MirOS License (MirOS)",
+    "Name": "MirOS License (MirOS)",
+    "SPDXIdentifier": "MirOS",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Name": "GNU General Public License v3 or later (GPLv3+)",
+    "SPDXIdentifier": "GPL-3.0-or-later",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: GUST Font License 1.0",
+    "Name": "GUST Font License 1.0",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: Free To Use But Restricted",
+    "Name": "Free To Use But Restricted",
+    "SPDXIdentifier": "",
+    "SPDXNotIncluded": true
+  },
+  {
+    "Classifier": "License :: OSI Approved :: European Union Public Licence 1.0 (EUPL 1.0)",
+    "Name": "European Union Public Licence 1.0 (EUPL 1.0)",
+    "SPDXIdentifier": "EUPL-1.0",
+    "SPDXNotIncluded": false
+  },
+  {
+    "Classifier": "License :: OSI Approved :: Vovida Software License 1.0",
+    "Name": "Vovida Software License 1.0",
+    "SPDXIdentifier": "VSL-1.0",
+    "SPDXNotIncluded": false
+  }
+]

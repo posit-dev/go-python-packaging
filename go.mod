@@ -7,7 +7,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/rstudio/go-version v0.0.2
 	github.com/samber/lo v1.53.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.54.0
 	golang.org/x/text v0.40.0
 )

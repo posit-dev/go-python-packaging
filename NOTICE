@@ -76,3 +76,9 @@ pipeline, `break_args_options`, `COMMENT_RE`, `ENV_VAR_RE`, and
 and from Astral's uv (https://github.com/astral-sh/uv), specifically its
 uv-requirements crate, dual-licensed under the Apache License, Version
 2.0, or the MIT license.
+
+The license/ package is derived from rstudio/package-manager's PyPI license
+derivation (getLicense/getLicenseTypes and the licenses package's PyPI path),
+Copyright (c) Posit Software, PBC, contributed under the Apache License, Version
+2.0, or the MIT license. The embedded data/pypi_licenses.json maps public PyPI
+Trove classifiers to SPDX identifiers.

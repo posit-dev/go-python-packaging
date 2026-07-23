@@ -5,6 +5,7 @@ package license
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // ParseSPDXExpression parses an SPDX license expression and returns the individual
@@ -49,34 +50,33 @@ func tokenizeSPDX(expr string) []string {
 		}
 	}
 
+	// Iterate rune-by-rune (not byte-by-byte) so that multi-byte UTF-8
+	// whitespace separators (e.g. NBSP U+00A0) are classified correctly by
+	// unicode.IsSpace and split the expression like an ASCII space would.
 	i := 0
 	for i < len(expr) {
-		ch := rune(expr[i])
+		ch, size := utf8.DecodeRuneInString(expr[i:])
+		i += size
 
 		switch {
 		case ch == '(' || ch == ')':
 			flushCurrent()
 			tokens = append(tokens, string(ch))
-			i++
 
 		case ch == '+':
 			// + suffix attaches to the previous identifier (no whitespace per spec)
 			// but we handle it as part of the identifier
 			current.WriteRune(ch)
-			i++
 
 		case ch == ':':
 			// Part of DocumentRef-X:LicenseRef-Y format
 			current.WriteRune(ch)
-			i++
 
 		case unicode.IsSpace(ch):
 			flushCurrent()
-			i++
 
 		default:
 			current.WriteRune(ch)
-			i++
 		}
 	}
 

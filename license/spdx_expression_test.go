@@ -78,6 +78,13 @@ func TestParseSPDXExpression(t *testing.T) {
 		// Edge cases
 		{"extra whitespace", "  MIT   OR   Apache-2.0  ", []string{"MIT", "Apache-2.0"}},
 		{"mixed case operators", "MIT Or Apache-2.0", []string{"MIT", "Apache-2.0"}},
+
+		// Non-ASCII (Unicode) whitespace separators must split like ASCII spaces.
+		// NBSP (U+00A0) is multi-byte in UTF-8, so a byte-wise tokenizer would
+		// misread it and fail to split the expression.
+		{"NBSP-separated OR expression", "MIT OR Apache-2.0", []string{"MIT", "Apache-2.0"}},
+		{"NBSP-separated AND expression", "MIT AND Apache-2.0", []string{"MIT", "Apache-2.0"}},
+		{"ideographic-space-separated OR expression", "MIT　OR　Apache-2.0", []string{"MIT", "Apache-2.0"}},
 	}
 
 	for _, tc := range cases {

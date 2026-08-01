@@ -52,13 +52,33 @@ func TestParseRequirement_AllowsTrailingHorizontalWhitespace(t *testing.T) {
 	}
 }
 
-// test_error_invalid_marker_malformed_quoted_string: the closing quote is
-// escaped, so the string is unterminated.
+// test_error_invalid_marker_malformed_quoted_string: upstream rejects strings
+// with trailing unpaired backslash or truncated \x escape, but accepts valid
+// escapes like doubled backslash and \n. We tokenize permissively (like
+// upstream's QUOTED_STRING rule) then validate the contents.
 func TestParseRequirement_RejectsMalformedQuotedString(t *testing.T) {
-	for _, s := range []string{`name; os_name == "C:\"`, `name; os_name == "\x"`} {
-		t.Run(s, func(t *testing.T) {
+	// These two cases are rejected by upstream's ast.literal_eval
+	rejects := []string{
+		`name; os_name == "C:\"`, // trailing unpaired backslash
+		`name; os_name == "\x"`,  // truncated \x escape
+	}
+	for _, s := range rejects {
+		t.Run("reject:"+s, func(t *testing.T) {
 			_, err := ParseRequirement(NewTokenizer(s))
 			assert.Error(t, err, "input %q should be rejected", s)
+		})
+	}
+
+	// These cases are accepted by upstream (valid Python string escapes).
+	// We accept the token but do not decode the escape (out of scope).
+	accepts := []string{
+		`name; os_name == "C:\\U"`, // doubled backslash (paired)
+		`name; os_name == "\n"`,    // newline escape
+	}
+	for _, s := range accepts {
+		t.Run("accept:"+s, func(t *testing.T) {
+			_, err := ParseRequirement(NewTokenizer(s))
+			assert.NoError(t, err, "input %q should be accepted (upstream accepts it)", s)
 		})
 	}
 }

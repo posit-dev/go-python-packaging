@@ -138,9 +138,12 @@ type Token struct {
 }
 
 // Unquoted returns a QuotedString token's value with its surrounding quote
-// characters stripped. No escape processing is performed, since PEP 508
-// quoted strings support none; this mirrors packaging's _parser.py, which
-// takes token.text[1:-1] directly.
+// characters stripped. No escape processing is performed: while
+// pypa/packaging calls ast.literal_eval on the token to decode Python
+// string-literal escapes (\n, \\, \x41, etc.), we deliberately do not
+// implement full escape decoding here (out of scope). We validate only the
+// two specific malformed cases upstream asserts in tests: a trailing unpaired
+// backslash and a truncated \x escape.
 func (t Token) Unquoted() string {
 	if len(t.Text) < 2 {
 		return t.Text
@@ -188,7 +191,7 @@ var tokenRules = map[Kind]*regexp.Regexp{
 		`implementation_(?:name|version)|` +
 		`extra` +
 		`)\b`),
-	QuotedString: regexp.MustCompile(`\A(?:'[^'\\]*'|"[^"\\]*")`),
+	QuotedString: regexp.MustCompile(`\A(?:'[^']*'|"[^"]*")`),
 	End:          regexp.MustCompile(`\A$`),
 
 	// --- requirement-only rules below (see the requirement-only Kind

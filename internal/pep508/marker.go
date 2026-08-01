@@ -313,7 +313,16 @@ func parseMarkerVar(t *Tokenizer) (Operand, error) {
 		return EnvVar{Name: foldEnvVarAlias(name)}, nil
 	}
 	if t.check(QuotedString) {
-		return Literal{Value: t.read().Unquoted()}, nil
+		tok := t.read()
+		val := tok.Unquoted()
+		// Upstream calls ast.literal_eval on the token, which rejects
+		// malformed escape sequences. We validate only the two specific
+		// cases upstream asserts in tests: a trailing unpaired backslash
+		// (the closing quote is "escaped"), and a truncated \x escape.
+		if err := validateQuotedStringContents(val); err != nil {
+			return nil, t.NewSyntaxErrorAt(err.Error(), tok.Pos, tok.Pos+len(tok.Text))
+		}
+		return Literal{Value: val}, nil
 	}
 	return nil, t.NewSyntaxError("Expected a marker variable or quoted string")
 }
@@ -339,6 +348,48 @@ func parseMarkerOp(t *Tokenizer) (CompareOp, error) {
 		return CompareOp(t.read().Text), nil
 	}
 	return "", t.NewSyntaxError("Expected marker operator, one of <=, <, !=, ==, >=, >, ~=, ===, in, not in")
+}
+
+// validateQuotedStringContents checks for the two specific malformed escape
+// cases that upstream's ast.literal_eval rejects: a trailing unpaired
+// backslash, and a truncated \x escape (not followed by two hex digits).
+// Returning nil means the string is valid (or contains other escape sequences
+// we do not validate). A non-nil error's message is "Invalid quoted string",
+// matching upstream.
+func validateQuotedStringContents(s string) error {
+	// Check for trailing unpaired backslash: count consecutive backslashes
+	// at the end, reject if odd. "C:\" has 1 (odd), "C:\\" has 2 (even, paired).
+	trailingBackslashes := 0
+	for i := len(s) - 1; i >= 0 && s[i] == '\\'; i-- {
+		trailingBackslashes++
+	}
+	if trailingBackslashes%2 == 1 {
+		return &SyntaxError{Msg: "Invalid quoted string"}
+	}
+
+	// Check for truncated \x escape: find any \x not followed by two hex digits.
+	// We scan for \x and check the next two characters; if either is missing
+	// or not a hex digit, reject.
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && s[i+1] == 'x' {
+			// Found \x at positions [i, i+1]; need two hex digits at [i+2, i+3].
+			if i+3 >= len(s) {
+				// Not enough characters remain
+				return &SyntaxError{Msg: "Invalid quoted string"}
+			}
+			// Check if both characters are hex digits
+			if !isHexDigit(s[i+2]) || !isHexDigit(s[i+3]) {
+				return &SyntaxError{Msg: "Invalid quoted string"}
+			}
+			// Valid \xNN, skip past it
+			i += 3
+		}
+	}
+	return nil
+}
+
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 // normalizeExtraLiteral normalizes the Literal side of a comparison against

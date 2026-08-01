@@ -119,7 +119,14 @@ func (r Requirement) String() string {
 	}
 
 	if !r.Marker.IsEmpty() {
-		b.WriteString(" ; ")
+		// pypa/packaging renders "; " normally but " ; " when a URL is
+		// present, because a bare ";" immediately after a URL would be
+		// ambiguous - a URL may itself contain ";". Match that exactly.
+		if r.URL != "" {
+			b.WriteString(" ; ")
+		} else {
+			b.WriteString("; ")
+		}
 		b.WriteString(r.Marker.String())
 	}
 

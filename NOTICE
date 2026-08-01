@@ -82,3 +82,12 @@ derivation (getLicense/getLicenseTypes and the licenses package's PyPI path),
 Copyright (c) Posit Software, PBC, contributed under the Apache License, Version
 2.0, or the MIT license. The embedded data/pypi_licenses.json maps public PyPI
 Trove classifiers to SPDX identifiers.
+
+The requirement/ package's conformance tests port the dependency-specifier
+cases of pypa/packaging (https://github.com/pypa/packaging), Copyright (c)
+Donald Stufft and individual contributors, specifically
+tests/test_requirements.py's test_basic_valid_requirement_parsing
+cross-product parameters and the invalid-requirement cases of class
+TestRequirementParsing, licensed under the Apache License, Version 2.0.
+Translated from Python/pytest to Go table-driven tests; the parametrize
+cross-product is expressed as a curated subset with equivalent coverage.

@@ -60,9 +60,17 @@ func orderedOperatorPatterns() []string {
 func init() {
 	ops := orderedOperatorPatterns()
 
+	// Arbitrary equality ("===") compares an opaque token, which need not be a
+	// valid PEP 440 version. Give it its own branch with a non-whitespace-run
+	// operand; every other operator keeps the version-shaped operand. The
+	// arbitrary branch is FIRST because Go's regexp is leftmost-first and
+	// "===" must not be decomposed into "==" + "=".
+	const arbitraryOperand = `[^\s,;)]+`
+
 	specifierRegexp = regexp.MustCompile(
 		fmt.Sprintf(
-			`(?i)(?P<operator>(%s))\s*(?P<version>%s(\.\*)?)`,
+			`(?i)(?:(?P<arbitraryop>===)\s*(?P<arbitrary>%s)|(?P<operator>(%s))\s*(?P<version>%s(\.\*)?))`,
+			arbitraryOperand,
 			strings.Join(ops, "|"),
 			regex,
 		),
@@ -70,7 +78,8 @@ func init() {
 
 	validConstraintRegexp = regexp.MustCompile(
 		fmt.Sprintf(
-			`^\s*(\s*(%s)\s*(%s(\.\*)?)\s*\,?)*\s*$`,
+			`^\s*(\s*(?:===\s*%s|(%s)\s*(%s(\.\*)?))\s*\,?)*\s*$`,
+			arbitraryOperand,
 			strings.Join(ops, "|"),
 			regex,
 		),
@@ -204,7 +213,13 @@ func newSpecifier(s string, sanitizer func(s string) string) (specifier, error) 
 
 	operator := m[specifierRegexp.SubexpIndex("operator")]
 	version := m[specifierRegexp.SubexpIndex("version")]
-	version = sanitizer(version)
+	if arbitrary := m[specifierRegexp.SubexpIndex("arbitrary")]; arbitrary != "" {
+		// Arbitrary equality: the operand is an opaque token, used verbatim.
+		operator = m[specifierRegexp.SubexpIndex("arbitraryop")]
+		version = arbitrary
+	} else {
+		version = sanitizer(version)
+	}
 
 	if operator != "===" {
 		if err := validate(operator, version); err != nil {
@@ -232,9 +247,9 @@ func validate(operator, version string) error {
 
 	switch operator {
 	case "", "=", "==", "!=":
-		if hasWildcard && (!v.dev.isNull() || v.local != "") {
+		if hasWildcard && (!v.dev.isNull() || !v.post.isNull() || v.local != "") {
 			return errors.New(
-				"the (non)equality operators don't allow to use a wild card and a dev or local version together",
+				"the (non)equality operators don't allow to use a wild card and a dev, post, or local version together",
 			)
 		}
 	case "~=":

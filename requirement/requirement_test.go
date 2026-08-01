@@ -68,10 +68,13 @@ func TestParse_VersionSpec_Parenthesized(t *testing.T) {
 	assert.Equal(t, want.String(), r.Specifiers.String())
 }
 
-func TestParse_VersionSpec_EmptyParens_IsError(t *testing.T) {
-	_, err := Parse("foo()")
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrInvalidRequirement))
+func TestParse_VersionSpec_EmptyParens_IsValid(t *testing.T) {
+	// An empty parenthesized specifier is valid and means "no constraint"
+	// (pypa/packaging test_empty_specifier).
+	r, err := Parse("foo()")
+	require.NoError(t, err)
+	assert.Equal(t, "foo", r.Name)
+	assert.Equal(t, "", r.Specifiers.String(), "empty parens mean no specifier")
 }
 
 func TestParse_VersionSpec_MultipleClauses(t *testing.T) {

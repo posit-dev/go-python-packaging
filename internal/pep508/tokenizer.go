@@ -168,7 +168,7 @@ func (t Token) Unquoted() string {
 // TestIdentifier_NeverCheckedAfterWordCharWithNoBoundary in
 // requirement_test.go.
 var tokenRules = map[Kind]*regexp.Regexp{
-	WS:     regexp.MustCompile(`\A\s+`),
+	WS:     regexp.MustCompile(`\A[ \t]+`),
 	LParen: regexp.MustCompile(`\A\(`),
 	RParen: regexp.MustCompile(`\A\)`),
 	OP:     regexp.MustCompile(`\A(?:===|==|~=|!=|<=|>=|<|>)`),
@@ -188,7 +188,7 @@ var tokenRules = map[Kind]*regexp.Regexp{
 		`implementation_(?:name|version)|` +
 		`extra` +
 		`)\b`),
-	QuotedString: regexp.MustCompile(`\A(?:'[^']*'|"[^"]*")`),
+	QuotedString: regexp.MustCompile(`\A(?:'[^'\\]*'|"[^"\\]*")`),
 	End:          regexp.MustCompile(`\A$`),
 
 	// --- requirement-only rules below (see the requirement-only Kind

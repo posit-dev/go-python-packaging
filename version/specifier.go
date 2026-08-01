@@ -30,11 +30,35 @@ var (
 	prefixRegexp          *regexp.Regexp
 )
 
-func init() {
-	ops := make([]string, 0, len(specifierOperators))
-	for k := range specifierOperators {
-		ops = append(ops, regexp.QuoteMeta(k))
+// orderedOperatorPatterns returns the regexp-quoted comparison operators in a
+// deterministic order suitable for a regexp alternation.
+//
+// Go's regexp is leftmost-FIRST, not leftmost-longest, so an alternative that
+// is a prefix of a later one wins the match: listing "=" before "==" makes
+// "==1.0" parse with operator "=" and version "=1.0". Order longest-first, and
+// keep the empty operator (which matches anything) last. Ranging over the
+// specifierOperators map directly would randomize this per process.
+func orderedOperatorPatterns() []string {
+	// Longest-first; "" last because it matches anything.
+	ordered := []string{"===", "==", "!=", "<=", ">=", "~=", "<", ">", "="}
+	out := make([]string, 0, len(ordered)+1)
+	for _, op := range ordered {
+		if _, ok := specifierOperators[op]; !ok {
+			panic("orderedOperatorPatterns: unknown operator " + op)
+		}
+		out = append(out, regexp.QuoteMeta(op))
 	}
+	if _, ok := specifierOperators[""]; ok {
+		out = append(out, regexp.QuoteMeta(""))
+	}
+	if len(out) != len(specifierOperators) {
+		panic("orderedOperatorPatterns: operator list is out of sync with specifierOperators")
+	}
+	return out
+}
+
+func init() {
+	ops := orderedOperatorPatterns()
 
 	specifierRegexp = regexp.MustCompile(
 		fmt.Sprintf(

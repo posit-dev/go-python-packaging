@@ -124,10 +124,14 @@ func (Literal) markerOperand() {}
 func (l Literal) String() string { return quoteLiteral(l.Value) }
 
 // quoteLiteral renders a literal's value back into PEP 508 quoted-string
-// syntax. PEP 508 quoted strings have no escape syntax, so a value
-// containing a double quote is rendered single-quoted instead; a value
-// containing both quote characters cannot be round-tripped (packaging has
-// the same limitation, for the same reason).
+// syntax. We do not EMIT escape sequences, so a value containing a double
+// quote is rendered single-quoted instead; a value containing both quote
+// characters cannot be round-tripped (packaging has the same limitation).
+//
+// Note this is about what we emit, not what we accept: upstream runs the token
+// through ast.literal_eval, so Python string escapes ARE valid on input (see
+// Token.Unquoted and validateQuotedStringContents). Do not use this comment as
+// grounds for removing the escape validation.
 func quoteLiteral(v string) string {
 	if strings.Contains(v, `"`) {
 		return "'" + v + "'"
@@ -356,34 +360,36 @@ func parseMarkerOp(t *Tokenizer) (CompareOp, error) {
 // Returning nil means the string is valid (or contains other escape sequences
 // we do not validate). A non-nil error's message is "Invalid quoted string",
 // matching upstream.
+// It walks the string ONCE, left to right, consuming each escape sequence as a
+// unit. A single pass is required, not two independent scans: an escaped
+// backslash consumes BOTH of its bytes, so `\\x` is a complete pair followed by
+// a literal "x" -- not a truncated \x escape. Scanning for `\x` separately from
+// the trailing-backslash check has no way to know which backslashes were
+// already consumed, and falsely rejects `"C:\\xyz"`, `"a\\x"`, and `"\\x"` --
+// all of which upstream accepts.
 func validateQuotedStringContents(s string) error {
-	// Check for trailing unpaired backslash: count consecutive backslashes
-	// at the end, reject if odd. "C:\" has 1 (odd), "C:\\" has 2 (even, paired).
-	trailingBackslashes := 0
-	for i := len(s) - 1; i >= 0 && s[i] == '\\'; i-- {
-		trailingBackslashes++
-	}
-	if trailingBackslashes%2 == 1 {
-		return &SyntaxError{Msg: "Invalid quoted string"}
-	}
-
-	// Check for truncated \x escape: find any \x not followed by two hex digits.
-	// We scan for \x and check the next two characters; if either is missing
-	// or not a hex digit, reject.
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) && s[i+1] == 'x' {
-			// Found \x at positions [i, i+1]; need two hex digits at [i+2, i+3].
-			if i+3 >= len(s) {
-				// Not enough characters remain
-				return &SyntaxError{Msg: "Invalid quoted string"}
-			}
-			// Check if both characters are hex digits
-			if !isHexDigit(s[i+2]) || !isHexDigit(s[i+3]) {
-				return &SyntaxError{Msg: "Invalid quoted string"}
-			}
-			// Valid \xNN, skip past it
-			i += 3
+		if s[i] != '\\' {
+			continue
 		}
+		// A backslash at the very end is unpaired: the escape is unterminated.
+		// This is upstream's `"C:\"` case.
+		if i+1 >= len(s) {
+			return &SyntaxError{Msg: "Invalid quoted string"}
+		}
+		if s[i+1] == 'x' {
+			// \x requires exactly two hex digits. This is upstream's `"\x"`
+			// (and `"\x4"`, `"\xZZ"`) case.
+			if i+3 >= len(s) || !isHexDigit(s[i+2]) || !isHexDigit(s[i+3]) {
+				return &SyntaxError{Msg: "Invalid quoted string"}
+			}
+			i += 3 // consume \xNN
+			continue
+		}
+		// Any other escape (including \\, \n, \t, \', \") consumes exactly two
+		// bytes. We deliberately do not validate \u/\U/octal -- see the package
+		// note on why full Python escape semantics are out of scope.
+		i++
 	}
 	return nil
 }

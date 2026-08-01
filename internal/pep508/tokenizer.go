@@ -40,9 +40,13 @@ const (
 	// "platform_python_implementation". Folding the alias to its
 	// canonical name is the marker parser's job, not the tokenizer's.
 	Variable
-	// QuotedString matches a single- or double-quoted string literal.
-	// PEP 508 quoted strings have no escape syntax; a double-quoted
-	// string may embed unescaped single quotes and vice versa.
+	// QuotedString matches a single- or double-quoted string literal. The
+	// rule is deliberately permissive and matches upstream's exactly
+	// ('[^']*' / "[^"]*"), so a double-quoted string may embed unescaped
+	// single quotes and vice versa, and a backslash tokenizes fine.
+	// Upstream then validates the token via ast.literal_eval, i.e. Python
+	// string escapes ARE meaningful on input; see validateQuotedStringContents
+	// in marker.go for the subset we validate.
 	QuotedString
 	// End matches only at the end of the source (zero-width).
 	End

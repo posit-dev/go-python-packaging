@@ -74,6 +74,15 @@ func TestParseRequirement_RejectsMalformedQuotedString(t *testing.T) {
 	accepts := []string{
 		`name; os_name == "C:\\U"`, // doubled backslash (paired)
 		`name; os_name == "\n"`,    // newline escape
+		// An escaped backslash consumes BOTH bytes, so these are a complete
+		// pair followed by a literal "x" -- NOT a truncated \x escape. An
+		// earlier implementation scanned for trailing backslashes and for \x
+		// independently, with no way to know which backslashes a prior escape
+		// had already consumed, and falsely rejected all three. Regression
+		// guard: the body must contain a `\\` pair immediately before an "x".
+		`name; os_name == "C:\\xyz"`,
+		`name; os_name == "a\\x"`,
+		`name; os_name == "\\x"`,
 	}
 	for _, s := range accepts {
 		t.Run("accept:"+s, func(t *testing.T) {

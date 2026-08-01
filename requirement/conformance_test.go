@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/posit-dev/go-python-packaging/marker"
 	"github.com/posit-dev/go-python-packaging/requirement"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -224,10 +225,18 @@ func TestBasicValidRequirementParsing(t *testing.T) {
 			wantSpec := strings.Trim(subWS(us[1], ""), "()")
 			assert.Equal(t, wantSpec, r.Specifiers.String(), "specifier, input %q", src)
 
+			// Upstream: req.marker == Marker(marker.format(ws="")). Compare
+			// CONTENT, not just presence -- our Marker.String() normalizes
+			// quoting and spacing, so the comparison goes through a parsed
+			// round-trip of the expected text rather than the raw string
+			// (see the intentional-divergence note in this file's header).
 			if mk == noURL {
 				assert.True(t, r.Marker.IsEmpty(), "expected no marker, input %q", src)
 			} else {
-				assert.False(t, r.Marker.IsEmpty(), "expected a marker, input %q", src)
+				wantMarker, err := marker.Parse(subWS(mk, ""))
+				require.NoError(t, err, "expected-marker text should itself parse, input %q", src)
+				assert.Equal(t, wantMarker.String(), r.Marker.String(),
+					"marker content, input %q", src)
 			}
 		})
 	}

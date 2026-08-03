@@ -37,6 +37,13 @@ rather than `0.1.3`.
   backslash (`os_name == "C:\"`) and a truncated `\x` escape (`"\x"`). Valid Python
   escapes still parse, including a doubled backslash immediately before an `x`
   (`"C:\\xyz"`).
+- Local version labels now normalize their `-` and `_` separators to `.`, as PEP 440
+  requires. `1.0+abc-abc` previously stayed verbatim; it now renders as `1.0+abc.abc`
+  and compares equal to it. **This also changes ordering**, and fixes a wrong answer:
+  a label was compared as a single alphabetic segment, so `1.0+ubuntu-2` sorted
+  *above* `1.0+ubuntu-10`. It now sorts below, matching upstream. Consumers that
+  persist or compare rendered versions, or that rely on the previous sort order of
+  dash- or underscore-separated local labels, will see a difference.
 
 ### Added
 
@@ -45,6 +52,12 @@ rather than `0.1.3`.
 - Conformance tables ported from `pypa/packaging` for PEP 508 requirements and grammar,
   including an invariant that a specifier string can never yield more specifiers than
   it contains operators.
+- A vertical tab is accepted as surrounding whitespace around a version, matching
+  upstream. Go's `\s` omits `\v` where Python's includes it, so `"1.0\v"` was
+  previously rejected.
+- Property-based tests (`pgregory.net/rapid`) adapted from upstream's Hypothesis
+  suite. This is a test-only dependency and does not enter the module's non-test
+  import graph.
 
 ### Fixed
 

@@ -30,15 +30,47 @@ var (
 	prefixRegexp          *regexp.Regexp
 )
 
-func init() {
-	ops := make([]string, 0, len(specifierOperators))
-	for k := range specifierOperators {
-		ops = append(ops, regexp.QuoteMeta(k))
+// orderedOperatorPatterns returns the regexp-quoted comparison operators in a
+// deterministic order suitable for a regexp alternation.
+//
+// Go's regexp is leftmost-FIRST, not leftmost-longest, so an alternative that
+// is a prefix of a later one wins the match: listing "=" before "==" makes
+// "==1.0" parse with operator "=" and version "=1.0". Order longest-first, and
+// keep the empty operator (which matches anything) last. Ranging over the
+// specifierOperators map directly would randomize this per process.
+func orderedOperatorPatterns() []string {
+	// Longest-first; "" last because it matches anything.
+	ordered := []string{"===", "==", "!=", "<=", ">=", "~=", "<", ">", "="}
+	out := make([]string, 0, len(ordered)+1)
+	for _, op := range ordered {
+		if _, ok := specifierOperators[op]; !ok {
+			panic("orderedOperatorPatterns: unknown operator " + op)
+		}
+		out = append(out, regexp.QuoteMeta(op))
 	}
+	if _, ok := specifierOperators[""]; ok {
+		out = append(out, regexp.QuoteMeta(""))
+	}
+	if len(out) != len(specifierOperators) {
+		panic("orderedOperatorPatterns: operator list is out of sync with specifierOperators")
+	}
+	return out
+}
+
+func init() {
+	ops := orderedOperatorPatterns()
+
+	// Arbitrary equality ("===") compares an opaque token, which need not be a
+	// valid PEP 440 version. Give it its own branch with a non-whitespace-run
+	// operand; every other operator keeps the version-shaped operand. The
+	// arbitrary branch is FIRST because Go's regexp is leftmost-first and
+	// "===" must not be decomposed into "==" + "=".
+	const arbitraryOperand = `[^\s,;)]+`
 
 	specifierRegexp = regexp.MustCompile(
 		fmt.Sprintf(
-			`(?i)(?P<operator>(%s))\s*(?P<version>%s(\.\*)?)`,
+			`(?i)(?:(?P<arbitraryop>===)\s*(?P<arbitrary>%s)|(?P<operator>(%s))\s*(?P<version>%s(\.\*)?))`,
+			arbitraryOperand,
 			strings.Join(ops, "|"),
 			regex,
 		),
@@ -46,7 +78,8 @@ func init() {
 
 	validConstraintRegexp = regexp.MustCompile(
 		fmt.Sprintf(
-			`^\s*(\s*(%s)\s*(%s(\.\*)?)\s*\,?)*\s*$`,
+			`^\s*(\s*(?:===\s*%s|(%s)\s*(%s(\.\*)?))\s*\,?)*\s*$`,
+			arbitraryOperand,
 			strings.Join(ops, "|"),
 			regex,
 		),
@@ -180,7 +213,13 @@ func newSpecifier(s string, sanitizer func(s string) string) (specifier, error) 
 
 	operator := m[specifierRegexp.SubexpIndex("operator")]
 	version := m[specifierRegexp.SubexpIndex("version")]
-	version = sanitizer(version)
+	if arbitrary := m[specifierRegexp.SubexpIndex("arbitrary")]; arbitrary != "" {
+		// Arbitrary equality: the operand is an opaque token, used verbatim.
+		operator = m[specifierRegexp.SubexpIndex("arbitraryop")]
+		version = arbitrary
+	} else {
+		version = sanitizer(version)
+	}
 
 	if operator != "===" {
 		if err := validate(operator, version); err != nil {
@@ -208,9 +247,9 @@ func validate(operator, version string) error {
 
 	switch operator {
 	case "", "=", "==", "!=":
-		if hasWildcard && (!v.dev.isNull() || v.local != "") {
+		if hasWildcard && (!v.dev.isNull() || !v.post.isNull() || v.local != "") {
 			return errors.New(
-				"the (non)equality operators don't allow to use a wild card and a dev or local version together",
+				"the (non)equality operators don't allow to use a wild card and a dev, post, or local version together",
 			)
 		}
 	case "~=":

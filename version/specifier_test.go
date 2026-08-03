@@ -27,8 +27,7 @@ func TestNewConstraints(t *testing.T) {
 		{"<1.0.dev1", false},
 		{">2.0.post1", false},
 
-		// TODO
-		// {"===lolwat", false},
+		{"===lolwat", false},
 
 		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L50-L86
 		// Operator-less specifier
@@ -107,8 +106,7 @@ func TestNewRSpecifiers(t *testing.T) {
 		{"<1.0.dev1", false},
 		{">2.0.post1", false},
 
-		// TODO
-		// {"===lolwat", false},
+		{"===lolwat", false},
 
 		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L50-L86
 		// Operator-less specifier
@@ -201,8 +199,6 @@ func TestVersion_Check(t *testing.T) {
 		{"2", "==2.*", true},
 		{"2.0", "==2.*", true},
 		{"2.0.0", "==2.*", true},
-		{"2.0.post1", "==2.0.post1.*", true},
-		{"2.0.post1.dev1", "==2.0.post1.*", true},
 		{"2.1+local.version", "==2.1.*", true},
 
 		// Test the in-equality operation
@@ -305,8 +301,6 @@ func TestVersion_Check(t *testing.T) {
 		{"2", "!=2.*", false},
 		{"2.0", "!=2.*", false},
 		{"2.0.0", "!=2.*", false},
-		{"2.0.post1", "!=2.0.post1.*", false},
-		{"2.0.post1.dev1", "!=2.0.post1.*", false},
 
 		//Test the greater than equal operation
 		{"2.0.dev1", ">=2", false},

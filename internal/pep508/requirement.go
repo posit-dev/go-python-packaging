@@ -143,8 +143,25 @@ func parseRequirementDetails(t *Tokenizer, req *RawRequirement) error {
 		if t.peek(End) {
 			return nil
 		}
-		if _, err := t.expect(WS, "whitespace after URL"); err != nil {
-			return err
+		// Consume horizontal whitespace and any immediately following line
+		// breaks. PEP 508 requires whitespace after a URL; a newline is valid
+		// (common in "defensively multiline" Requires-Dist metadata) and must
+		// be consumed here so a following "; marker" clause is recognized.
+		if !t.consume(WS) {
+			// No horizontal whitespace found; check for a line break.
+			if t.pos < len(t.source) && (t.source[t.pos] == '\n' || t.source[t.pos] == '\r') {
+				// Consume the line break(s).
+				for t.pos < len(t.source) && (t.source[t.pos] == '\n' || t.source[t.pos] == '\r') {
+					t.pos++
+				}
+			} else {
+				return t.NewSyntaxError("Expected whitespace after URL")
+			}
+		} else {
+			// Consumed horizontal whitespace; also consume any following line breaks.
+			for t.pos < len(t.source) && (t.source[t.pos] == '\n' || t.source[t.pos] == '\r') {
+				t.pos++
+			}
 		}
 		if t.peek(End) {
 			return nil
@@ -165,7 +182,9 @@ func parseRequirementDetails(t *Tokenizer, req *RawRequirement) error {
 // parenthesized, comma-separated run of version-specifier clauses. It
 // returns the raw specifier text (parens stripped, clauses rejoined with
 // ","), or "" if no version specifier is present at all - which is legal,
-// since versionspec is entirely optional in name_req.
+// since versionspec is entirely optional in name_req. An empty parenthesized
+// group ("name()") is also legal and likewise yields "", matching
+// pypa/packaging's test_empty_specifier.
 func parseVersionSpec(t *Tokenizer) (string, error) {
 	t.consume(WS)
 	parenthesized := t.check(LParen)
@@ -188,8 +207,6 @@ func parseVersionSpec(t *Tokenizer) (string, error) {
 			clauses = append(clauses, normalizeSpecifierClause(specTok.Text))
 			t.consume(WS)
 		}
-	} else if parenthesized {
-		return "", t.NewSyntaxError("Expected version specifier inside parentheses")
 	}
 
 	if parenthesized {

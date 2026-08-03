@@ -40,9 +40,13 @@ const (
 	// "platform_python_implementation". Folding the alias to its
 	// canonical name is the marker parser's job, not the tokenizer's.
 	Variable
-	// QuotedString matches a single- or double-quoted string literal.
-	// PEP 508 quoted strings have no escape syntax; a double-quoted
-	// string may embed unescaped single quotes and vice versa.
+	// QuotedString matches a single- or double-quoted string literal. The
+	// rule is deliberately permissive and matches upstream's exactly
+	// ('[^']*' / "[^"]*"), so a double-quoted string may embed unescaped
+	// single quotes and vice versa, and a backslash tokenizes fine.
+	// Upstream then validates the token via ast.literal_eval, i.e. Python
+	// string escapes ARE meaningful on input; see validateQuotedStringContents
+	// in marker.go for the subset we validate.
 	QuotedString
 	// End matches only at the end of the source (zero-width).
 	End
@@ -138,9 +142,12 @@ type Token struct {
 }
 
 // Unquoted returns a QuotedString token's value with its surrounding quote
-// characters stripped. No escape processing is performed, since PEP 508
-// quoted strings support none; this mirrors packaging's _parser.py, which
-// takes token.text[1:-1] directly.
+// characters stripped. No escape processing is performed: while
+// pypa/packaging calls ast.literal_eval on the token to decode Python
+// string-literal escapes (\n, \\, \x41, etc.), we deliberately do not
+// implement full escape decoding here (out of scope). We validate only the
+// two specific malformed cases upstream asserts in tests: a trailing unpaired
+// backslash and a truncated \x escape.
 func (t Token) Unquoted() string {
 	if len(t.Text) < 2 {
 		return t.Text
@@ -168,7 +175,7 @@ func (t Token) Unquoted() string {
 // TestIdentifier_NeverCheckedAfterWordCharWithNoBoundary in
 // requirement_test.go.
 var tokenRules = map[Kind]*regexp.Regexp{
-	WS:     regexp.MustCompile(`\A\s+`),
+	WS:     regexp.MustCompile(`\A[ \t]+`),
 	LParen: regexp.MustCompile(`\A\(`),
 	RParen: regexp.MustCompile(`\A\)`),
 	OP:     regexp.MustCompile(`\A(?:===|==|~=|!=|<=|>=|<|>)`),

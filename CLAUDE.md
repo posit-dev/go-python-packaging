@@ -81,6 +81,21 @@ GitHub workflow — they run locally as you commit.
 - Treat RoboRev findings the way PPM treats its automated PR review: address Critical/Important
   findings before merge; record or dismiss Minor ones deliberately, not silently.
 
+## Changelog
+
+`CHANGELOG.md` is the only signal a downstream consumer of this **public** module has.
+Any change that alters what parses, what a `String()` method renders, or what a
+derivation returns needs an entry under `## [Unreleased]` in the same PR — behavior
+narrowing especially, because a consumer's previously-valid input starts erroring.
+
+- Sections: `Breaking`, `Added`, `Fixed`, `Notes`. Put narrowing changes under
+  `Breaking`, not `Fixed`, even when the old behavior was a bug.
+- While the major version is `0`, breaking changes ship in a **minor** bump (`0.1.x`
+  → `0.2.0`), never a patch. A consumer pinning `^0.1` would otherwise pick up a
+  narrowing change silently.
+- Internal refactors, test-only changes, and dependency bumps do not need entries.
+- CI does not validate the changelog, so this is a review concern.
+
 ## Committing
 
 Commit early and often. After each self-contained change that builds and passes tests, make a

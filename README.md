@@ -21,6 +21,11 @@ Part of [RFD 0001 — Native Go PyPI Dependency Resolution](https://github.com/r
 | `wheelname/` | PEP 427 wheel filename → name/version/build/tags (implemented) |
 | `tags/` | PEP 425/600/656 compatibility tags (server-side, target-parameterized; no host detection) |
 
+## Changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md). Breaking changes ship in a minor bump while the
+major version is `0`, so check the `Breaking` heading before upgrading.
+
 ## License
 
 Dual-licensed under **Apache-2.0** OR **MIT** at your option. Every source

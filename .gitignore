@@ -15,3 +15,6 @@ coverage.html
 .vscode/
 # roborev snapshots
 /.roborev/
+
+# superpowers / SDD working notes (never committed)
+/.superpowers/

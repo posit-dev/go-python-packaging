@@ -90,7 +90,28 @@ func (ln letterNumber) isNull() bool {
 }
 
 func init() {
-	versionRegex = regexp.MustCompile(`(?i)^\s*` + regex + `\s*$`)
+	// The surrounding-whitespace class must include the vertical tab. Go's
+	// \s is [\t\n\f\r ] and excludes \v, while Python's re \s is
+	// [ \t\n\r\f\v] and includes it -- so anchoring with a bare \s* would
+	// reject "1.0\v", which pypa/packaging accepts.
+	versionRegex = regexp.MustCompile(`(?i)^[\s\v]*` + regex + `[\s\v]*$`)
+}
+
+// localVersionSeparators matches the separators PEP 440 permits inside a local
+// version label. It mirrors pypa/packaging's _local_version_separators.
+var localVersionSeparators = regexp.MustCompile(`[._-]`)
+
+// normalizeLocal normalizes a local version label: PEP 440 requires "-" and
+// "_" separators to be rewritten as ".", and the label to be lowercased.
+//
+// Normalizing the separator is not cosmetic. cmpkey splits the label on "."
+// to compare it segment by segment, with numeric segments ordering above
+// alphabetic ones, so an un-normalized "ubuntu-2" is treated as a single
+// alphabetic segment and compared lexicographically. That makes
+// "1.0+ubuntu-10" sort BELOW "1.0+ubuntu-2" -- a silent wrong answer of the
+// same kind as rstudio/package-manager#19369.
+func normalizeLocal(local string) string {
+	return localVersionSeparators.ReplaceAllString(strings.ToLower(local), ".")
 }
 
 // MustParse is like Parse but panics if the version cannot be parsed.
@@ -150,7 +171,7 @@ func Parse(v string) (Version, error) {
 		case "dev_n":
 			devN, err = part.NewBigInt(m)
 		case "local":
-			local = strings.ToLower(m)
+			local = normalizeLocal(m)
 		}
 		if err != nil {
 			return Version{}, fmt.Errorf("failed to parse version (%s): %w", v, err)

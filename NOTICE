@@ -91,3 +91,19 @@ cross-product parameters and the invalid-requirement cases of class
 TestRequirementParsing, licensed under the Apache License, Version 2.0.
 Translated from Python/pytest to Go table-driven tests; the parametrize
 cross-product is expressed as a curated subset with equivalent coverage.
+
+The internal/proptest package's property tests are adapted from
+pypa/packaging's Hypothesis property suite (https://github.com/pypa/packaging),
+Copyright (c) Donald Stufft and individual contributors, specifically
+tests/property/strategies.py's generators and the version-ordering,
+version-normalization, version-release, and specifier-matching properties,
+licensed under the Apache License, Version 2.0. Translated from
+Python/Hypothesis to Go/pgregory.net/rapid; upstream properties that assert on
+parsed-field structure have no counterpart here, since this module exports no
+such accessors. The tests/property/test_ranges_*.py files are deliberately not
+ported: no packaging.ranges counterpart exists in this module.
+
+pgregory.net/rapid is licensed under the Mozilla Public License, Version 2.0.
+It is a test-only dependency: internal/proptest contains only _test.go files,
+so rapid does not appear in this module's non-test import graph and is not
+built into any consumer that imports this library.

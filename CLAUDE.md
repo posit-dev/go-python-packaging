@@ -34,6 +34,34 @@ go vet ./...
 
 Module floor is **Go 1.25** (conservative for a public library; PPM consumes it fine at 1.26).
 
+## Property tests (`internal/proptest/`)
+
+Property-based tests live in `internal/proptest/`, adapted from `pypa/packaging`'s
+Hypothesis suite using `pgregory.net/rapid`.
+
+**Every file in that directory must stay a `_test.go` file.** rapid is MPL-2.0, and a
+single non-test file there would pull it into this public library's non-test import
+graph. The invariant is checkable:
+
+```bash
+go list -deps ./...        # must NOT contain pgregory.net/rapid
+go list -deps -test ./...  # must contain it
+```
+
+The cost is that these tests may only use exported API — which is why they assert
+observable behavior (ordering, normalization, round-tripping, matching) rather than
+parsed-field structure.
+
+**The properties do not replace the conformance tables**, and vice versa. A round-trip
+property is invariant to a change of canonical form, so it cannot detect that
+`Requirement.String()`'s output shape moved; only `requirement/conformance_test.go`
+catches that. Both are load-bearing. This was established by mutation testing, and
+the reasoning is recorded in the `internal/proptest` package doc.
+
+Keep the random seed. `rapid.Check` takes no seed option by design; a fixed seed
+degenerates into a slow, unreadable table test. Name every `Draw` so failures are
+reproducible from the printed output.
+
 ## Code Style
 
 - Follow standard Go conventions.

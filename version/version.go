@@ -102,7 +102,8 @@ func init() {
 var localVersionSeparators = regexp.MustCompile(`[._-]`)
 
 // normalizeLocal normalizes a local version label: PEP 440 requires "-" and
-// "_" separators to be rewritten as ".", and the label to be lowercased.
+// "_" separators to be rewritten as ".", the label to be lowercased, and any
+// segment consisting entirely of ASCII digits to be normalized as an integer.
 //
 // Normalizing the separator is not cosmetic. cmpkey splits the label on "."
 // to compare it segment by segment, with numeric segments ordering above
@@ -110,8 +111,53 @@ var localVersionSeparators = regexp.MustCompile(`[._-]`)
 // alphabetic segment and compared lexicographically. That makes
 // "1.0+ubuntu-10" sort BELOW "1.0+ubuntu-2" -- a silent wrong answer of the
 // same kind as rstudio/package-manager#19369.
+//
+// # Why all-digit segments have their leading zeros stripped
+//
+// PEP 440: "If a segment consists entirely of ASCII digits then that section
+// should be considered an integer" — and its integer-normalization rule ("an
+// integer version of 00 would normalize to 0") therefore reaches it. The rule's
+// one carve-out is scoped to integers inside an ALPHANUMERIC local segment,
+// "such as 1.0+foo0100 which is already in its normalized form", so "foo0100"
+// is left exactly as it is while "007" becomes "7".
+//
+// That asymmetry is easy to get backwards, so note what it is NOT about:
+// ordering was already correct without this, because cmpkey compares all-digit
+// segments numerically either way. What it changes is the normalized STRING —
+// and PEP 440 defines the "===" arbitrary-equality operator as string equality
+// on that form, so without this "===1.0+7" fails to match "1.0+007" while the
+// reference implementation matches it.
 func normalizeLocal(local string) string {
-	return localVersionSeparators.ReplaceAllString(strings.ToLower(local), ".")
+	lowered := localVersionSeparators.ReplaceAllString(strings.ToLower(local), ".")
+
+	segments := strings.Split(lowered, ".")
+	for i, seg := range segments {
+		if isASCIIDigits(seg) {
+			segments[i] = strings.TrimLeft(seg, "0")
+			if segments[i] == "" {
+				// The segment was all zeros, which is the integer 0.
+				segments[i] = "0"
+			}
+		}
+	}
+	return strings.Join(segments, ".")
+}
+
+// isASCIIDigits reports whether s is non-empty and every byte is an ASCII digit.
+//
+// Deliberately not unicode.IsDigit: PEP 440 says "entirely of ASCII digits", and
+// admitting other Unicode digit forms here would accept labels the grammar
+// rejects and hand strconv-shaped input to a numeric comparison.
+func isASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // MustParse is like Parse but panics if the version cannot be parsed.

@@ -44,6 +44,15 @@ rather than `0.1.3`.
   *above* `1.0+ubuntu-10`. It now sorts below, matching upstream. Consumers that
   persist or compare rendered versions, or that rely on the previous sort order of
   dash- or underscore-separated local labels, will see a difference.
+- A local version segment consisting entirely of ASCII digits normalizes as an integer,
+  so `1.0+007` renders as `1.0+7` and `1.0+ubuntu-007` as `1.0+ubuntu.7`. PEP 440 says
+  such a segment "should be considered an integer", and scopes its
+  no-normalization carve-out to integers inside an *alphanumeric* segment — so
+  `1.0+foo0100` is still left exactly as it is. **Ordering is unaffected**: those
+  segments were already compared numerically, so `1.0+007` and `1.0+7` compared equal
+  before and after. What changes is the rendered string, and therefore arbitrary
+  equality: `===1.0+7` now matches `1.0+007`, as upstream does, where it previously
+  did not.
 
 ### Added
 

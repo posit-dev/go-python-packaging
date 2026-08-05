@@ -115,3 +115,83 @@ func TestSurroundingWhitespaceIncludesVerticalTab(t *testing.T) {
 		}
 	}
 }
+
+// TestAllDigitLocalSegmentsNormalizeAsIntegers covers a third divergence, found
+// by a differential run over 634,187 distinct real PyPI version strings — which
+// is worth stating plainly, because that corpus could not possibly have found
+// it: PEP 440 forbids PyPI from accepting local versions at all, so the corpus
+// contained ZERO of them and this came out of the synthetic supplement.
+//
+// PEP 440: "If a segment consists entirely of ASCII digits then that section
+// should be considered an integer", and its integer-normalization rule ("an
+// integer version of 00 would normalize to 0") therefore reaches such a
+// segment. The rule's carve-out is scoped to integers inside an ALPHANUMERIC
+// segment, "such as 1.0+foo0100 which is already in its normalized form".
+//
+// Expected values below are the measured output of str(packaging.version.Version(s)),
+// not a reading of the spec — the spec settles which implementation is right, the
+// reference settles what the answer looks like.
+func TestAllDigitLocalSegmentsNormalizeAsIntegers(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"1.0+007", "1.0+7"},
+		{"1.0+7", "1.0+7"},
+		{"1.0+00", "1.0+0"}, // All zeros is the integer 0, not the empty string.
+		{"1.0+0", "1.0+0"},
+		{"1.0+ubuntu.007", "1.0+ubuntu.7"},
+		{"1.0+ubuntu-007", "1.0+ubuntu.7"}, // Separator and integer normalization compose.
+		{"1.0+007.ubuntu", "1.0+7.ubuntu"},
+		{"1.0+foo0100", "1.0+foo0100"}, // Alphanumeric: the carve-out, left alone.
+		{"1.0+0foo", "1.0+0foo"},       // Also alphanumeric, despite the leading zero.
+		{"1.0+09000", "1.0+9000"},
+	} {
+		v, err := Parse(tc.in)
+		if err != nil {
+			t.Errorf("Parse(%q): unexpected error %v", tc.in, err)
+			continue
+		}
+		if got := v.String(); got != tc.want {
+			t.Errorf("Parse(%q).String() = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestAllDigitLocalNormalizationIsObservableOnlyViaArbitraryEquality pins WHY
+// the normalization above matters, so a future reader does not conclude it is
+// cosmetic and drop it.
+//
+// Ordering was already correct without it, because cmpkey compares all-digit
+// segments numerically either way — so no comparison test could have caught the
+// bug. PEP 440 defines "===" as string equality on the normalized form, which is
+// the one place the rendering is load-bearing.
+func TestAllDigitLocalNormalizationIsObservableOnlyViaArbitraryEquality(t *testing.T) {
+	padded, err := Parse("1.0+007")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	bare, err := Parse("1.0+7")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// The half that was always right: they compare equal.
+	if got := padded.Compare(bare); got != 0 {
+		t.Errorf("Compare(1.0+007, 1.0+7) = %d, want 0 — all-digit segments compare "+
+			"numerically, which was never the defect", got)
+	}
+
+	// The half that was wrong: "===" is string equality, so the strings must match.
+	if padded.String() != bare.String() {
+		t.Errorf("String() forms differ (%q vs %q), so \"===1.0+7\" would fail to match "+
+			"\"1.0+007\" while the reference implementation matches it",
+			padded.String(), bare.String())
+	}
+
+	spec, err := NewSpecifiers("===1.0+7")
+	if err != nil {
+		t.Fatalf("NewSpecifiers: %v", err)
+	}
+	if !spec.Check(padded) {
+		t.Error("\"===1.0+7\" must match 1.0+007: PEP 440 defines === as string equality " +
+			"on the normalized form, and 007 normalizes to 7")
+	}
+}

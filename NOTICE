@@ -4,25 +4,39 @@ Copyright 2026 Posit Software, PBC
 This product is licensed under the Apache License, Version 2.0, or the MIT
 license, at your option. See LICENSE-APACHE and LICENSE-MIT.
 
-This product's design is informed by the Astral `uv` project
-(https://github.com/astral-sh/uv) and by konstin's Rust implementations of
-PEP 440 and PEP 508. No source from those projects is incorporated at this
-time; attribution for any incorporated material is added when that material
-lands.
-
 The version/ package is derived from rstudio/go-pep440-version, itself a fork of
 aquasecurity/go-pep440-version (https://github.com/aquasecurity/go-pep440-version),
 licensed under the Apache License, Version 2.0.
 
 The distribution/ package is ported from rstudio/python-distribution-parser
 (https://github.com/rstudio/python-distribution-parser), Copyright (c) 2024
-Posit Software, PBC, originally MIT-licensed.
+Posit Software, PBC, originally MIT-licensed. That project in turn incorporates
+material from two upstream projects, credited here because the credit was not
+carried through either port:
+
+  - The Python `pkginfo` package, Copyright (c) 2009 Agendaless Consulting, Inc.
+    and Contributors, licensed under the MIT license. The METADATA header
+    tables and the header parsing and leading-whitespace handling in
+    distribution/internal/distributions/ derive from pkginfo's
+    pkginfo/distribution.py.
+  - pypa/twine (https://github.com/pypa/twine), Copyright (c) 2013 Donald
+    Stufft and individual contributors and Copyright (c) 2015 Ian Cordasco,
+    licensed under the Apache License, Version 2.0. The distribution-name
+    sanitization, the wheel filename pattern, the package-file metadata
+    dictionary, and the hash manager in distribution/ derive from twine.
+
+Several packages below adapt material from pypa/packaging
+(https://github.com/pypa/packaging), Copyright (c) Donald Stufft and individual
+contributors. That project is dual-licensed: its LICENSE offers the terms of
+EITHER the Apache License, Version 2.0, or the two-clause BSD license. Where a
+paragraph below cites it as Apache-2.0, read that as shorthand for the dual
+offer; material from it is taken under whichever arm applies.
 
 The tags/ package adapts platform-compatibility-tag algorithms (manylinux and
 musllinux glibc/musl floor tables, macOS format lists, tag ordering) from
 pypa/packaging (https://github.com/pypa/packaging), specifically
-packaging/tags.py, packaging/_manylinux.py, and packaging/_musllinux.py,
-licensed under the Apache License, Version 2.0; and from Astral's uv
+packaging/tags.py, packaging/_manylinux.py, and packaging/_musllinux.py; and
+from Astral's uv
 (https://github.com/astral-sh/uv), specifically the uv-platform-tags crate,
 dual-licensed under the Apache License, Version 2.0, or the MIT license.
 

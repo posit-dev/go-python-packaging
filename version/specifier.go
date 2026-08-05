@@ -271,9 +271,29 @@ func validate(operator, version string) error {
 }
 
 // Check tests if a version satisfies all the specifiers.
+//
+// # An empty set of specifiers admits EVERY version
+//
+// PEP 508 makes a requirement's version specifier optional, and a requirement
+// without one accepts any version. The canonical spelling of that is an empty
+// specifier set: pypa/packaging parses `flask` to a `SpecifierSet(”)` of length
+// zero that contains every version, epochs and pre-releases included.
+//
+// So "no constraint" means "all versions", not "no versions". Reading it the
+// other way inverts every gate built on it — a caller filtering candidates
+// against an unconstrained set would discard all of them, and would be told the
+// package is unsatisfiable rather than unconstrained.
+//
+// Note that andCheck below already returns true for an empty AND-group, for the
+// same reason: a conjunction over no constraints is vacuously true. Zero
+// OR-groups is the same statement one level up, and the two must agree.
 func (ss Specifiers) Check(v Version) bool {
 	if ss.conf.includePreRelease {
 		v.preReleaseIncluded = true
+	}
+
+	if len(ss.specifiers) == 0 {
+		return true
 	}
 
 	for _, s := range ss.specifiers {

@@ -21,6 +21,16 @@ rather than `0.1.3`.
 
 ### Breaking
 
+- `Specifiers.Check` returns `true` for a specifier set holding no specifiers, where it
+  previously returned `false` for every version. PEP 508 makes a requirement's version
+  specifier optional and an omitted one accepts any version, which upstream spells as an
+  empty `SpecifierSet` that contains everything — so "no constraint" means "all versions",
+  not "no versions". The package was already inconsistent with itself here: an empty
+  *conjunction* was vacuously true while zero *groups* was false.
+  **This reverses the answer for a zero-value `Specifiers`**, so a consumer using one as a
+  gate moves from rejecting everything to admitting everything. Note that no input string
+  can produce such a value — every degenerate input errors — so only a deliberately
+  constructed or zero-valued `Specifiers` is affected.
 - `Requirement.String()` renders the marker separator as `"; "` when the requirement
   has no URL. It previously always rendered `" ; "`. The `" ; "` form is kept when a
   URL *is* present, because a bare `;` immediately after a URL is ambiguous — a URL

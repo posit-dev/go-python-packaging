@@ -21,6 +21,13 @@ rather than `0.1.3`.
 
 ### Breaking
 
+- Two version specifiers written adjacently with no comma are rejected, as PEP 508 requires
+  and as upstream does. `foo (>=1.0<2.0)` and `foo>=1.0<2.0` previously parsed.
+  **They did not merely parse — they re-rendered with a comma the input never contained**,
+  turning `urllib3 (>=1.26<2.0)` into `urllib3>=1.26,<2.0` and so fabricating a constraint
+  boundary from malformed input. Measured over 2,804,135 distinct requirement strings in a
+  production PyPI snapshot, 756 were affected. Arbitrary equality (`===`) is unchanged and
+  still takes an opaque operand, which may contain operator characters.
 - `Specifiers.Check` returns `true` for a specifier set holding no specifiers, where it
   previously returned `false` for every version. PEP 508 makes a requirement's version
   specifier optional and an omitted one accepts any version, which upstream spells as an

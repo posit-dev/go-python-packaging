@@ -207,12 +207,27 @@ var tokenRules = map[Kind]*regexp.Regexp{
 	Comma:      regexp.MustCompile(`\A,`),
 	Semicolon:  regexp.MustCompile(`\A;`),
 	AT:         regexp.MustCompile(`\A@`),
-	// Specifier: an OP (reusing the same longest-first alternation as the
-	// OP rule) followed by optional whitespace and a version-shaped run
-	// of characters, bounded by whitespace/comma/semicolon/closing-paren
-	// rather than a precise PEP 440 grammar - version.NewSpecifiers is
-	// the authoritative parser for the accumulated raw text.
-	Specifier: regexp.MustCompile(`\A(?:===|==|~=|!=|<=|>=|<|>)\s*[^\s,;)]+`),
+	// Specifier: an OP followed by optional whitespace and a version, split
+	// by operator the way upstream packaging's specifier regex is.
+	//
+	// "===" is arbitrary equality: PEP 440 says its operand is an opaque
+	// string that is never interpreted as a version, so it takes anything up
+	// to a delimiter.
+	//
+	// ⚠️ EVERY OTHER OPERATOR MUST EXCLUDE THE OPERATOR CHARACTERS "<>=~", or
+	// two adjacent specifiers FUSE INTO ONE TOKEN. With a single permissive
+	// run of non-delimiters, "<1.5.0>=1.2.0" tokenized as one specifier whose
+	// "version" was "1.5.0>=1.2.0"; version.NewSpecifiers then re-split that
+	// on operators and rendered "<1.5.0,>=1.2.0", INVENTING A COMMA the input
+	// never contained. PEP 508 requires a comma between specifiers and
+	// upstream rejects all such inputs, so accepting them both diverged from
+	// the spec and fabricated a constraint boundary.
+	//
+	// "!" stays admissible because a PEP 440 epoch contains one ("1!2.0").
+	// That means "<1.0!=2.0" tokenizes as "<1.0!" and then fails on the
+	// leftover "=2.0" rather than at the fusion point, which is a worse error
+	// message for the same correct verdict.
+	Specifier: regexp.MustCompile(`\A(?:===\s*[^\s,;)]+|(?:==|~=|!=|<=|>=|<|>)\s*[^\s,;)<>=~]+)`),
 	// URL: a greedy run of non-whitespace characters - the exact
 	// complement of the WS rule above (\s+) - deliberately not bounded by
 	// ";" (see the URL Kind doc comment). Upstream packaging's rule

@@ -118,6 +118,13 @@ narrowing especially, because a consumer's previously-valid input starts errorin
 
 - Sections: `Breaking`, `Added`, `Fixed`, `Notes`. Put narrowing changes under
   `Breaking`, not `Fixed`, even when the old behavior was a bug.
+- ⚠️ **Never add an entry to a dated section, only to `[Unreleased]`** — not even when the
+  release looks unreleased. Check `git ls-remote --tags origin` before you assume: three
+  fixes were filed under `## [0.2.0] - 2026-08-03` on the belief its tag was uncut, when
+  the tag had been pushed and the module proxy had already served it. **A Go module tag is
+  immutable once the proxy sees it**, so the changelog was claiming fixes the published
+  version did not contain, and the only remedy was a new release. If a dated section is
+  wrong, correct it in a follow-up release; do not backdate into it.
 - While the major version is `0`, breaking changes ship in a **minor** bump (`0.1.x`
   → `0.2.0`), never a patch. A consumer pinning `^0.1` would otherwise pick up a
   narrowing change silently.

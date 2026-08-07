@@ -9,15 +9,19 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-08-03
+## [0.3.0] - 2026-08-07
 
-A conformance release. `requirement/`, `version/`, and the PEP 508 grammar are now
-tested against tables ported from `pypa/packaging`'s `tests/test_requirements.py`
-(upstream SHA `4eb0753`), and the divergences those tables revealed are fixed.
+Finishes the conformance work `0.2.0` began, and corrects the module's attribution.
 
-Several of those fixes **narrow what parses**, and one **changes rendered output**.
-Read the Breaking section before upgrading — this is why the release is `0.2.0`
-rather than `0.1.3`.
+The three behavior changes below were originally written into `0.2.0`'s section on the
+belief that its tag had not yet been cut. It had: `v0.2.0` was published on 2026-08-03
+at `3dfc5dc` and a Go module tag cannot be moved once the module proxy has seen it. So
+they ship here instead, and `0.2.0`'s section no longer lists them. **If you read that
+section before 2026-08-07, it claimed these three for `v0.2.0` and `v0.2.0` does not
+contain them.**
+
+Two of the three **narrow what parses** and one **changes rendered output**, which is why
+this is `0.3.0` rather than `0.2.1`.
 
 ### Breaking
 
@@ -38,6 +42,39 @@ rather than `0.1.3`.
   gate moves from rejecting everything to admitting everything. Note that no input string
   can produce such a value — every degenerate input errors — so only a deliberately
   constructed or zero-valued `Specifiers` is affected.
+- A local version segment consisting entirely of ASCII digits normalizes as an integer,
+  so `1.0+007` renders as `1.0+7` and `1.0+ubuntu-007` as `1.0+ubuntu.7`. PEP 440 says
+  such a segment "should be considered an integer", and scopes its
+  no-normalization carve-out to integers inside an *alphanumeric* segment — so
+  `1.0+foo0100` is still left exactly as it is. **Ordering is unaffected**: those
+  segments were already compared numerically, so `1.0+007` and `1.0+7` compared equal
+  before and after. What changes is the rendered string, and therefore arbitrary
+  equality: `===1.0+7` now matches `1.0+007`, as upstream does, where it previously
+  did not.
+
+### Notes
+
+- `NOTICE` now credits the Python `pkginfo` package (MIT, Copyright (c) 2009 Agendaless
+  Consulting, Inc. and Contributors) and `pypa/twine` (Apache-2.0), whose material
+  `distribution/` ports. Neither was credited through `v0.2.0`. It also records that
+  `pypa/packaging` is dual-licensed Apache-2.0 **or** two-clause BSD rather than
+  Apache-2.0 only, and deletes a stale claim that no source from the cited projects was
+  incorporated — false since `tags/` landed on 2026-07-08, and so false in every released
+  version to date. **Redistributors of `v0.2.0` or earlier should take the `NOTICE` from
+  this release.** No code changed.
+
+## [0.2.0] - 2026-08-03
+
+A conformance release. `requirement/`, `version/`, and the PEP 508 grammar are now
+tested against tables ported from `pypa/packaging`'s `tests/test_requirements.py`
+(upstream SHA `4eb0753`), and the divergences those tables revealed are fixed.
+
+Several of those fixes **narrow what parses**, and one **changes rendered output**.
+Read the Breaking section before upgrading — this is why the release is `0.2.0`
+rather than `0.1.3`.
+
+### Breaking
+
 - `Requirement.String()` renders the marker separator as `"; "` when the requirement
   has no URL. It previously always rendered `" ; "`. The `" ; "` form is kept when a
   URL *is* present, because a bare `;` immediately after a URL is ambiguous — a URL
@@ -61,15 +98,6 @@ rather than `0.1.3`.
   *above* `1.0+ubuntu-10`. It now sorts below, matching upstream. Consumers that
   persist or compare rendered versions, or that rely on the previous sort order of
   dash- or underscore-separated local labels, will see a difference.
-- A local version segment consisting entirely of ASCII digits normalizes as an integer,
-  so `1.0+007` renders as `1.0+7` and `1.0+ubuntu-007` as `1.0+ubuntu.7`. PEP 440 says
-  such a segment "should be considered an integer", and scopes its
-  no-normalization carve-out to integers inside an *alphanumeric* segment — so
-  `1.0+foo0100` is still left exactly as it is. **Ordering is unaffected**: those
-  segments were already compared numerically, so `1.0+007` and `1.0+7` compared equal
-  before and after. What changes is the rendered string, and therefore arbitrary
-  equality: `===1.0+7` now matches `1.0+007`, as upstream does, where it previously
-  did not.
 
 ### Added
 
@@ -145,7 +173,8 @@ Initial release. One module, one package per PEP concern:
 - `license/` — PyPI classifier standardization, SPDX expression parsing, and top-level
   license derivation.
 
-[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/posit-dev/go-python-packaging/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/posit-dev/go-python-packaging/compare/v0.1.0...v0.1.1

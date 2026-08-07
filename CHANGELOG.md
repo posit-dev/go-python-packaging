@@ -9,6 +9,32 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Fixed
+
+- No method on a zero-value `Version` panics. Eight of the thirteen exported methods did:
+  `String`, `BaseVersion` and `Public` indexed `release[0]` on a nil slice, and all six
+  comparison methods inherited it because `Compare` calls `String` as its equality fast
+  path. A zero `Version` now renders as `""` and sorts below every parsed version, with two
+  zero values comparing equal. No version `Parse` accepts can render as `""` — the grammar
+  requires a release segment — so the empty string cannot collide with a real version.
+
+  A panicking `String` method is worse than most panics because `fmt` **recovers** it:
+  `fmt.Errorf("%s", v)` returned an error whose message contained
+  `%!s(PANIC=String method: runtime error: index out of range [0] with length 0)` and
+  reported no failure, so the defect was silently swallowed at the call sites most likely
+  to reach it, while a direct `String()` call crashed the process.
+- `real.Compare(Version{})` no longer panics with a nil pointer dereference. A zero
+  `Version`'s comparison key holds nil `Part` interfaces, and the underlying
+  `Parts.IsAny` ranges over elements calling `IsAny()` on each without a nil check, so the
+  panic fired before any element was compared — and only when the zero value was the
+  *argument*, which is why `Version{}.Compare(real)` returned an answer while the reverse
+  crashed. `Compare` now decides from the release segment before building a key.
+- `Compare` pads both release segments to the longer of the two. It previously padded the
+  second to its own length, which is a no-op. **No behavior changes for parsed versions** —
+  the underlying comparison tolerated the resulting length mismatch and returned the right
+  answer, verified across nine pairs with differing segment counts in both directions — so
+  this was latent rather than wrong. It became reachable only through a nil release.
+
 ## [0.3.0] - 2026-08-07
 
 Finishes the conformance work `0.2.0` began, and corrects the module's attribution.

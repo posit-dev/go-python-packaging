@@ -309,11 +309,47 @@ func (v Version) Compare(other Version) int {
 		return 0
 	}
 
+	// ⚠️ An uninitialized Version cannot go through key comparison at all. Its
+	// key's pre/post/dev/local are NIL Part interfaces, and go-version's
+	// Parts.IsAny ranges over the elements calling p.IsAny() with no nil check
+	// (part/list.go:101), so merely asking whether the Parts is "any"
+	// dereferences nil. That call sits at part/list.go:54, before any element
+	// is compared, and only on the *argument* side -- which is exactly why
+	// real.Compare(Version{}) crashed while Version{}.Compare(real) returned
+	// -1 perfectly well. The asymmetry was the tell that this is not about
+	// release lengths.
+	//
+	// Decide from the release segment instead. Parse cannot produce an empty
+	// release, so an empty one means an uninitialized Version: it sorts below
+	// every real version, and two of them are equal.
+	switch {
+	case len(v.release) == 0 && len(other.release) == 0:
+		return 0
+	case len(v.release) == 0:
+		return -1
+	case len(other.release) == 0:
+		return 1
+	}
+
 	k1 := v.key
 	k2 := other.key
 
-	k1.release = k1.release.Padding(len(k2.release), part.Zero)
-	k2.release = k2.release.Padding(len(k2.release), part.Zero)
+	// Pad both release segments to the longer of the two, so an absent
+	// trailing segment compares as zero and 1.2 equals 1.2.0.
+	//
+	// ⚠️ The second line padded k2 to its OWN length, which is a no-op, where
+	// it means the longer of the two. For two parsed versions key.compare
+	// tolerates the unequal lengths that left behind and still returns the
+	// right answer -- verified across ten pairs with differing segment counts
+	// in both directions -- so the defect was latent rather than wrong.
+	//
+	// It stopped being latent for a zero-value Version, whose release is nil:
+	// real.Compare(Version{}) dereferenced a nil part and crashed while
+	// Version{}.Compare(real) returned -1, because only the k1 side was ever
+	// actually padded. That asymmetry is the tell.
+	n := max(len(k1.release), len(k2.release))
+	k1.release = k1.release.Padding(n, part.Zero)
+	k2.release = k2.release.Padding(n, part.Zero)
 
 	return k1.compare(k2)
 }
@@ -354,10 +390,20 @@ func (v Version) String() string {
 	}
 
 	// Release segment
-	fmt.Fprintf(&buf, "%s", v.release[0])
-	for _, r := range v.release[1:len(v.release)] {
-		fmt.Fprintf(&buf, ".%s", r)
-	}
+	//
+	// ⚠️ A zero-value Version has no release segments, and indexing release[0]
+	// unconditionally made every rendering path panic on one. Parse cannot
+	// produce an empty release -- the grammar requires `[0-9]+` -- so an empty
+	// one always means an uninitialized Version is being rendered, and the
+	// empty string cannot collide with any version Parse accepts.
+	//
+	// A panicking String method is worse than most panics, because fmt
+	// *recovers* it: `fmt.Errorf("%s", v)` yields a message containing
+	// "%!s(PANIC=String method: ...)" and reports no error, so the bug is
+	// swallowed at exactly the call sites most likely to hit it. A direct call
+	// crashes instead. Compare() also calls String() as its fast path, so this
+	// one line is what made all six comparison methods panic as well.
+	writeRelease(&buf, v.release)
 
 	// Pre-release
 	if !v.pre.isNull() {
@@ -391,13 +437,24 @@ func (v Version) BaseVersion() string {
 		fmt.Fprintf(&buf, "%s!", v.epoch.String())
 	}
 
-	// Release segment
-	fmt.Fprintf(&buf, "%s", v.release[0].String())
-	for _, r := range v.release[1:len(v.release)] {
-		fmt.Fprintf(&buf, ".%s", r.String())
-	}
+	// Release segment. See String() for why an empty release is rendered as
+	// nothing rather than indexed into.
+	writeRelease(&buf, v.release)
 
 	return buf.String()
+}
+
+// writeRelease renders a dot-joined release segment, or nothing at all when
+// there are no segments. Shared by String and BaseVersion so the two cannot
+// drift on the empty case, which is how only one of them getting a guard would
+// leave the other panicking.
+func writeRelease(buf *bytes.Buffer, release []part.BigInt) {
+	for i, r := range release {
+		if i > 0 {
+			buf.WriteByte('.')
+		}
+		buf.WriteString(r.String())
+	}
 }
 
 // Original returns the original parsed version as-is, including any

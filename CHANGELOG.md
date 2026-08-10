@@ -9,6 +9,59 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- `tags`: PEP 703 free-threaded CPython targets, via the new `Target.FreeThreaded`.
+  A free-threaded target takes `cp313-cp313t-<platform>` as its exact ABI, and it
+  does **not** accept `abi3` wheels — the GIL-enabled stable ABI is a different
+  ABI, not a superset. Its stable-ABI tier is PEP 803's `abi3t` instead, both for
+  the target's own version and across the whole descending walk down to `cp32`.
+  Measured against `pypa/packaging` 26.2, whose `_abi3_applies` is explicitly
+  false for threaded builds. Requires CPython 3.13 or later, matching the floor
+  upstream puts on the `t` abiflag; `Compile` rejects it elsewhere, and rejects
+  it entirely for non-CPython implementations.
+
+- `tags`: PyPy targets, via `Implementation: "pp"` and the new
+  `Target.ImplMajor`/`ImplMinor` (the *implementation's* version, as distinct
+  from the Python version: PyPy 7.3 on Python 3.10 is `pypy310_pp73`). These
+  route through upstream's `generic_tags` path rather than `cpython_tags`:
+  `pp310-pypy310_pp73-<platform>`, then `pp310-none-<platform>`, then the
+  compatible tier — whose interpreter-any entry is the **major-only**
+  `pp3-none-any`, not `pp310-none-any`. There is no `abi3` tier; `abi3` is a
+  CPython concept. Leaving `ImplMajor`/`ImplMinor` unset means "PyPy version
+  unknown" and simply omits the implementation-ABI tier.
+
+  Previously `Implementation: "pp"` was rejected by `Compile`, so this only
+  widens what is accepted.
+
+- `tags`: macOS 10.x targets, and the pre-11 compatibility tail that macOS 11+
+  targets should always have carried. **A macOS 11-or-later target now generates
+  additional platform tags it did not before** (`macosx_10_16` down to
+  `macosx_10_4`, with the full format list on x86_64 and `universal2` alone on
+  arm64), ranked below every macOS 11+ tag. A wheel that was previously judged
+  incompatible with such a target may now match; nothing that previously matched
+  stops matching, and no ordering among the pre-existing tags changed. A declared
+  10.x target instead walks the *minor* version, as macOS's pre-11 numbering
+  requires, and emits nothing below `macosx_10_4`, where upstream's
+  `_mac_binary_formats` defines no x86_64 format at all.
+
+  macOS 10.x is accepted for `x86_64` only, which is a deliberate divergence from
+  `pypa/packaging`: it would answer a 10.x arm64 request with
+  `macosx_10_<n>_arm64` tags, because it only ever describes the host it is
+  running on. Apple silicon shipped with macOS 11, so as a *declared* target that
+  combination can only be a mistake, and `Compile` rejects it.
+
+- `tags`: `Baseline`, `Baselines`, `LookupBaseline` and `BaselinesFor` — a
+  compiled-in table of the libc version well-known Linux distribution releases
+  ship, layered over the `>=` comparison PEP 600 and PEP 656 actually specify.
+  `LookupBaseline("ubuntu", "22.04").Apply(t)` fills a `Target`'s libc fields
+  from a distribution name; `BaselinesFor("manylinux_2_28_x86_64")` reports which
+  recorded releases can run a wheel carrying that tag, legacy `manylinux1`/`2010`/
+  `2014` aliases included. The version numbers are derived mechanically from the
+  distributions' own package repositories; see `tags/data/gen_distro_baselines.py`
+  for the source, the filters, and how to regenerate the table. The table is
+  embedded, never fetched — nothing in `tags` reaches the network.
+
 ## [0.4.0] - 2026-08-10
 
 ### Breaking

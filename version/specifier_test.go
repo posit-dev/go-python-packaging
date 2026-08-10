@@ -397,12 +397,18 @@ func TestVersion_Check(t *testing.T) {
 		{"2.0", "=2.0+deadbeef", false},
 		{"2.0", "*", true},
 
-		// space separated
-		{"1.0", ">= 1.0 != 1.3.4.* < 2.0", true},
-		{"1.0", "~= 0.9 >= 1.0 != 1.3.4.* < 2.0", false},
-		{"0.9", "~= 0.9 != 1.3.4.* < 2.0", true},
-		{"2.0", ">= 1.0 != 1.3.4.* < 2.0", false},
-		{"1.3.4", ">= 1.0 != 1.3.4.* < 2.0", false},
+		// Comma-separated, which is what PEP 440 writes and what upstream
+		// accepts. These five cases were previously written SPACE-separated
+		// (">= 1.0 != 1.3.4.* < 2.0") and asserted as valid, pinning a leniency
+		// the reference implementation does not have: measured against
+		// pypa/packaging 26.2, that form raises InvalidSpecifier while the comma
+		// form parses to '!=1.3.4.*,<2.0,>=1.0'. The intent of each case is the
+		// conjunction, which the commas express without relying on the defect.
+		{"1.0", ">= 1.0, != 1.3.4.*, < 2.0", true},
+		{"1.0", "~= 0.9, >= 1.0, != 1.3.4.*, < 2.0", false},
+		{"0.9", "~= 0.9, != 1.3.4.*, < 2.0", true},
+		{"2.0", ">= 1.0, != 1.3.4.*, < 2.0", false},
+		{"1.3.4", ">= 1.0, != 1.3.4.*, < 2.0", false},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s %s", tt.version, tt.spec), func(t *testing.T) {

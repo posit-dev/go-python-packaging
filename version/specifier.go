@@ -76,13 +76,40 @@ func init() {
 		),
 	)
 
+	// One constraint, either arbitrary equality or an operator plus a version.
+	//
+	// ⚠️ The operator alternation admits the EMPTY operator, so a bare version
+	// ("2.0") is a valid constraint. That is deliberate and separately tracked
+	// (rstudio/package-manager#18634), and it is load-bearing: PPM's
+	// GET /repos/:repo/packages/:key/doc?version=<raw> passes a bare version
+	// through NewRSpecifiers. Do not remove it while tightening the comma.
+	constraint := fmt.Sprintf(
+		`(?:===\s*%s|(%s)\s*(%s(\.\*)?))`,
+		arbitraryOperand,
+		strings.Join(ops, "|"),
+		regex,
+	)
+
+	// A COMMA IS REQUIRED BETWEEN CONSTRAINTS.
+	//
+	// This previously ended each repetition with `\s*\,?`, making the separator
+	// optional, so two constraints written adjacently validated and then
+	// re-rendered WITH a comma the input never contained. Combined with the
+	// empty operator above, that turned "==0.1dev10.3" into the constraint
+	// "==0.1dev10" plus a bare-version constraint "3", rendering
+	// "==0.1dev10,3" -- a fabricated constraint boundary, the same defect class
+	// as #22 by a different route.
+	//
+	// A trailing comma is still tolerated, deliberately: that is a separate
+	// leniency from the missing separator, nothing observed depends on
+	// tightening it, and narrowing one thing at a time keeps the blast radius
+	// measurable.
+	//
+	// Go's regexp permits a capture-group name to repeat, so embedding the
+	// version pattern twice needs no name stripping. Verified rather than
+	// assumed -- it is the opposite of Python's rule.
 	validConstraintRegexp = regexp.MustCompile(
-		fmt.Sprintf(
-			`^\s*(\s*(?:===\s*%s|(%s)\s*(%s(\.\*)?))\s*\,?)*\s*$`,
-			arbitraryOperand,
-			strings.Join(ops, "|"),
-			regex,
-		),
+		fmt.Sprintf(`^\s*(?:%s\s*(?:,\s*%s\s*)*,?)?\s*$`, constraint, constraint),
 	)
 
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)

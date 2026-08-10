@@ -486,6 +486,55 @@ func (v Version) IsPreRelease() bool {
 	return !v.pre.isNull() || !v.dev.isNull()
 }
 
+// postBase returns the version this one is a post-release of: the same version
+// with its post, dev and local segments dropped. Ported from pypa/packaging
+// 26.2's _post_base.
+//
+//	1.0.post1       -> 1.0
+//	1.0a1.post0     -> 1.0a1
+//	1.0.post0.dev1  -> 1.0
+//
+// It is derived by re-parsing the rendered prefix rather than by editing the
+// struct, because the comparison key is precomputed at Parse time and a
+// hand-edited copy would carry a key describing the version it used to be.
+func (v Version) postBase() (Version, bool) {
+	var buf bytes.Buffer
+	if v.epoch.Compare(part.Zero) == 1 {
+		fmt.Fprintf(&buf, "%s!", v.epoch)
+	}
+	writeRelease(&buf, v.release)
+	if !v.pre.isNull() {
+		fmt.Fprintf(&buf, "%s%s", v.pre.letter, v.pre.number)
+	}
+	return parseOperand(buf.String())
+}
+
+// earliestPreRelease returns the earliest pre-release of this version: the same
+// version with dev set to 0 and the local segment dropped. Ported from
+// pypa/packaging 26.2's _earliest_prerelease.
+//
+//	1.2         -> 1.2.dev0
+//	1.2.post1   -> 1.2.post1.dev0
+//
+// It is the lower bound of "a pre-release of V", which is what PEP 440's "<V
+// MUST NOT allow a pre-release of the specified version" actually means. See
+// specifierLessThan.
+func (v Version) earliestPreRelease() (Version, bool) {
+	var buf bytes.Buffer
+	if v.epoch.Compare(part.Zero) == 1 {
+		fmt.Fprintf(&buf, "%s!", v.epoch)
+	}
+	writeRelease(&buf, v.release)
+	if !v.pre.isNull() {
+		fmt.Fprintf(&buf, "%s%s", v.pre.letter, v.pre.number)
+	}
+	if !v.post.isNull() {
+		fmt.Fprintf(&buf, ".post%s", v.post.number)
+	}
+	buf.WriteString(".dev0")
+	return parseOperand(buf.String())
+}
+
 // trimmedRelease renders the version like String, but with trailing zero
 // components dropped from the release segment (always keeping at least one),
 // which is the canonical form upstream's canonicalize_version produces via

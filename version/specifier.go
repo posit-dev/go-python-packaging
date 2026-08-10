@@ -67,9 +67,18 @@ func init() {
 	// "===" must not be decomposed into "==" + "=".
 	const arbitraryOperand = `[^\s,;)]+`
 
+	// ⚠️ The whitespace class must be [\s\v], not \s. Go's \s is [\t\n\f\r ]
+	// and EXCLUDES the vertical tab (0x0B); Python's re \s is [ \t\n\r\f\v] and
+	// includes it. With a bare \s, the operator/operand separator would not
+	// match "\v", so `<=  \r \f \v v1.0` was rejected while pypa/packaging
+	// accepts it. versionRegex was already fixed for this; the specifier
+	// patterns were not.
+	const wsp = `[\s\v]`
+
 	specifierRegexp = regexp.MustCompile(
 		fmt.Sprintf(
-			`(?i)(?:(?P<arbitraryop>===)\s*(?P<arbitrary>%s)|(?P<operator>(%s))\s*(?P<version>%s(\.\*)?))`,
+			`(?i)(?:(?P<arbitraryop>===)%[1]s*(?P<arbitrary>%[2]s)|(?P<operator>(%[3]s))%[1]s*(?P<version>%[4]s(\.\*)?))`,
+			wsp,
 			arbitraryOperand,
 			strings.Join(ops, "|"),
 			regex,
@@ -84,7 +93,8 @@ func init() {
 	// GET /repos/:repo/packages/:key/doc?version=<raw> passes a bare version
 	// through NewRSpecifiers. Do not remove it while tightening the comma.
 	constraint := fmt.Sprintf(
-		`(?:===\s*%s|(%s)\s*(%s(\.\*)?))`,
+		`(?:===%[1]s*%[2]s|(%[3]s)%[1]s*(%[4]s(\.\*)?))`,
+		wsp,
 		arbitraryOperand,
 		strings.Join(ops, "|"),
 		regex,
@@ -108,8 +118,17 @@ func init() {
 	// Go's regexp permits a capture-group name to repeat, so embedding the
 	// version pattern twice needs no name stripping. Verified rather than
 	// assumed -- it is the opposite of Python's rule.
+	// ⚠️ The (?i) flag is REQUIRED here and was missing.
+	//
+	// specifierRegexp has it, this gate did not, so the two disagreed about
+	// case: `==1.0a1` passed the gate and parsed, while `==1.0A1` was rejected
+	// by the gate before specifierRegexp ever saw it. PEP 440 versions are
+	// case-insensitive, and pypa/packaging accepts every upper-case spelling
+	// (`==1.0DEV`, `==1.0ALPHA1`, `>=7.9A1`, `~=1.0.POST1`, ...). This was the
+	// single largest source of conformance failures in
+	// tests/test_specifiers.py's normalization table.
 	validConstraintRegexp = regexp.MustCompile(
-		fmt.Sprintf(`^\s*(?:%s\s*(?:,\s*%s\s*)*,?)?\s*$`, constraint, constraint),
+		fmt.Sprintf(`(?i)^%[1]s*(?:%[2]s%[1]s*(?:,%[1]s*%[2]s%[1]s*)*,?)?%[1]s*$`, wsp, constraint),
 	)
 
 	// EXACTLY ONE constraint, with no comma anywhere: the grammar for the
@@ -127,8 +146,14 @@ func init() {
 	// One rule, one copy. A singular constructor validating with the plural
 	// grammar is a coupling that breaks silently whenever the plural grammar
 	// moves, which is exactly how this was introduced.
+	// ⚠️ Uses the same (?i) flag and the same [\s\v] whitespace class as
+	// validConstraintRegexp above. The two grammars are deliberately independent
+	// about COMMAS and must stay identical about everything else -- if the
+	// singular one were case-sensitive, `NewSpecifier("==1.0DEV")` would be
+	// rejected while `NewSpecifiers("==1.0DEV")` parsed, which is a fresh version
+	// of the very inconsistency splitting them was meant to remove.
 	singleConstraintRegexp = regexp.MustCompile(
-		fmt.Sprintf(`^\s*%s\s*$`, constraint),
+		fmt.Sprintf(`(?i)^%[1]s*%[2]s%[1]s*$`, wsp, constraint),
 	)
 
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
@@ -206,6 +231,10 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		return universalSpecifiers(*c), nil
 	}
 
+	// A specifier-less group may only be the universal set when the input is a
+	// single group. See parseGroup.
+	allowEmpty := len(segments) == 1
+
 	var sss [][]Specifier
 	for _, vv := range segments {
 		if strings.TrimSpace(vv) == "*" {
@@ -213,7 +242,7 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		}
 		vv = strings.ReplaceAll(vv, "-", ".")
 
-		specs, err := parseGroup(vv, sanitizer)
+		specs, err := parseGroup(vv, sanitizer, allowEmpty)
 		if err != nil {
 			return Specifiers{}, err
 		}
@@ -244,13 +273,17 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 		return universalSpecifiers(*c), nil
 	}
 
+	// A specifier-less group may only be the universal set when the input is a
+	// single group. See parseGroup.
+	allowEmpty := len(segments) == 1
+
 	var sss [][]Specifier
 	for _, vv := range segments {
 		if strings.TrimSpace(vv) == "*" {
 			vv = ">=0.0.0"
 		}
 
-		specs, err := parseGroup(vv, sanitizer)
+		specs, err := parseGroup(vv, sanitizer, allowEmpty)
 		if err != nil {
 			return Specifiers{}, err
 		}
@@ -378,11 +411,22 @@ func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
 //
 // A blank group is not the same question as a blank comma-separated ITEM.
 // Upstream drops empty comma-split items (`[s.strip() for s in
-// specifiers.split(",") if s.strip()]`), which is why `packaging` accepts
-// ",>=1" and ">=1,,<2"; this package still rejects both, via
-// validConstraintRegexp, and that remaining divergence is tracked in
-// rstudio/package-manager#19391. Either way it is a question about members
-// within a group, never about whether the group itself may be empty.
+// specifiers.split(",") if s.strip()]`), so `packaging` accepts ",>=1",
+// ">=1,,<2" and ">=1,"; this function does the same, by dropping blank items
+// before validating. Dropping them cannot smuggle in an adjacent pair, because
+// what is left is re-joined with commas and still has to satisfy
+// validConstraintRegexp -- ">=1<2" is a single item with no comma to drop and
+// stays rejected.
+//
+// allowEmpty says whether a group that ends up with NO items may be the
+// universal set. It is true only for a single-group input, and that is the one
+// place this package deliberately stops short of upstream: `SpecifierSet(",")`
+// is universal in packaging 26.2, and `NewSpecifiers(",")` is universal here
+// too, but `">=1||,"` is an ERROR rather than universal. Upstream has no "||"
+// and so has no opinion; letting a comma-only SEGMENT become an empty group
+// would re-open the exact hole described above, just reached by a comma typo
+// instead of a "||" typo.
+//
 // ⚠️ parseGroup deliberately takes no conf. The pre-release policy passed to
 // NewSpecifiers belongs to the SET, not to its members, and stamping it onto
 // each member conflates the two: upstream's SpecifierSet keeps its own
@@ -391,17 +435,34 @@ func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
 // (the member's own autodetect) while the set's is False. Members are built
 // with the zero policy and autodetect individually; the set's policy is applied
 // at query time from ss.conf.
-func parseGroup(vv string, sanitizer func(string) string) ([]Specifier, error) {
-	if strings.TrimSpace(vv) == "" {
-		return nil, fmt.Errorf("improper constraint: empty constraint group")
+func parseGroup(vv string, sanitizer func(string) string, allowEmpty bool) ([]Specifier, error) {
+	// Drop blank comma-separated items, as upstream does.
+	items := make([]string, 0, strings.Count(vv, ",")+1)
+	for _, item := range strings.Split(vv, ",") {
+		if strings.TrimSpace(item) == "" {
+			continue
+		}
+		items = append(items, item)
 	}
-	if !validConstraintRegexp.MatchString(vv) {
+
+	if len(items) == 0 {
+		if !allowEmpty {
+			return nil, fmt.Errorf(
+				"improper constraint: %q has no constraints in it (an empty || segment is not allowed)", vv)
+		}
+		// Every item was blank, so the whole input is punctuation: the
+		// universal set, matching SpecifierSet(",").
+		return nil, nil
+	}
+
+	normalized := strings.Join(items, ",")
+	if !validConstraintRegexp.MatchString(normalized) {
 		return nil, fmt.Errorf("improper constraint: %s", vv)
 	}
 
-	found := specifierRegexp.FindAllString(vv, -1)
+	found := specifierRegexp.FindAllString(normalized, -1)
 	if found == nil {
-		found = append(found, strings.TrimSpace(vv))
+		found = append(found, strings.TrimSpace(normalized))
 	}
 
 	specs := make([]Specifier, 0, len(found))
@@ -459,9 +520,15 @@ func validate(operator, version string) error {
 
 	switch operator {
 	case "", "=", "==", "!=":
-		if hasWildcard && (!v.dev.isNull() || !v.post.isNull() || v.local != "") {
+		// ⚠️ The PRE-release arm was missing. This guard checked dev, post and
+		// local but never pre, so `==1.0a1.*` and `!=2.0a1.*` were wrongly
+		// ACCEPTED while pypa/packaging rejects them. PEP 440 does not allow a
+		// wildcard alongside any of the four, and a prefix match against a
+		// pre-release is meaningless: the wildcard covers the release segment,
+		// which is where the pre-release marker would have to sit.
+		if hasWildcard && (!v.pre.isNull() || !v.dev.isNull() || !v.post.isNull() || v.local != "") {
 			return errors.New(
-				"the (non)equality operators don't allow to use a wild card and a dev, post, or local version together",
+				"the (non)equality operators don't allow to use a wild card and a pre, dev, post, or local version together",
 			)
 		}
 	case "~=":
@@ -901,33 +968,27 @@ func specifierLessThan(prospective Version, spec string) bool {
 		return false
 	}
 
-	// This special case is here so that, unless the specifier itself includes is a pre-release version,
-	// that we do not accept pre-release versions for the version mentioned in the specifier
-	// (e.g. <3.1 should not match 3.1.dev0, but should match 3.0.dev0).
+	// PEP 440: "<V MUST NOT allow a pre-release of the specified version unless
+	// the specified version is itself a pre-release."
 	//
-	// ⚠️ This guard is MATCHING, not candidate selection: no pre-release
-	// policy turns it off. `<3.1` does not contain `3.1.dev0` even with
+	// ⚠️ This guard is MATCHING, not candidate selection: no pre-release policy
+	// turns it off. `<3.1` does not contain `3.1.dev0` even with
 	// PreReleasesInclude, which is what pypa/packaging 26.2 does.
+	//
+	// ⚠️ "a pre-release OF the specified version" is a lower bound, not a
+	// shared base version. The earlier `sameBaseVersion` test was far too
+	// broad: for the spec `1.0.post1` it treated `1.0.dev0` as a pre-release of
+	// it, because both have base version 1.0 -- but `1.0.dev0` is a pre-release
+	// of `1.0`, not of `1.0.post1`, and upstream accepts it. Comparing against
+	// the EARLIEST pre-release of the spec draws the boundary where PEP 440
+	// puts it.
 	if !s.IsPreRelease() && prospective.IsPreRelease() {
-		if sameBaseVersion(prospective, s) {
+		earliest, ok := s.earliestPreRelease()
+		if ok && prospective.GreaterThanOrEqual(earliest) {
 			return false
 		}
 	}
 	return true
-}
-
-// sameBaseVersion reports whether two versions share a base version (release
-// segment and epoch, with pre/post/dev/local discarded).
-func sameBaseVersion(a, b Version) bool {
-	av, ok := parseOperand(a.BaseVersion())
-	if !ok {
-		return false
-	}
-	bv, ok := parseOperand(b.BaseVersion())
-	if !ok {
-		return false
-	}
-	return av.Equal(bv)
 }
 
 func specifierGreaterThan(prospective Version, spec string) bool {
@@ -943,21 +1004,31 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 		return false
 	}
 
-	// This special case is here so that, unless the specifier itself includes is a post-release version,
-	// that we do not accept post-release versions for the version mentioned in the specifier
-	// (e.g. >3.1 should not match 3.0.post0, but should match 3.2.post0).
+	// PEP 440: ">V MUST NOT allow a post-release of the specified version unless
+	// the specified version is itself a post-release."
 	//
 	// ⚠️ Matching, not candidate selection. See specifierLessThan.
+	//
+	// ⚠️ "a post-release OF the specified version" means the version this one is
+	// a post-release of IS the spec, exactly. The earlier `sameBaseVersion` test
+	// was too broad: for the spec `1.0a1` it excluded `1.0.post0`, because both
+	// have base version 1.0 -- but `1.0.post0` is a post-release of `1.0`, not
+	// of `1.0a1`, and upstream accepts it.
 	if !s.IsPostRelease() && prospective.IsPostRelease() {
-		if sameBaseVersion(prospective, s) {
+		if base, ok := prospective.postBase(); ok && base.Equal(s) {
 			return false
 		}
 	}
 
-	// Ensure that we do not allow a local version of the version mentioned
-	//  in the specifier, which is technically greater than, to match.
+	// PEP 440: ">V MUST NOT match a local version of the specified version."
+	//
+	// ⚠️ A "local version of V" is one whose PUBLIC part equals V -- pre, post
+	// and dev segments included. `sameBaseVersion` discarded those, so `>1.0a1`
+	// wrongly rejected `1.0a2+local`: same base version 1.0, but a different
+	// public version, and upstream matches it.
 	if prospective.local != "" {
-		if sameBaseVersion(prospective, s) {
+		public, ok := parseOperand(prospective.Public())
+		if ok && public.Equal(s) {
 			return false
 		}
 	}

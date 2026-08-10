@@ -79,16 +79,20 @@ func TestEmptyOrSegmentCannotDisableAConstraint(t *testing.T) {
 	}
 }
 
-// PRESERVED-BEHAVIOR CONTROL. The "||" fix must not disturb the empty-input
-// universal set, nor comma handling inside a group.
+// CONTROL: the "||" rule and the comma rule are separate, and each must hold
+// without weakening the other.
 //
-// ⚠️ Note what the comma rows actually assert. `packaging` 26.2 ACCEPTS ",>=1"
-// and ">=1,,<2" (it drops empty comma-split items) and this package rejects
-// both -- a real, still-open divergence tracked in
-// rstudio/package-manager#19391 and NOT fixed here. The rows pin the current
-// behavior so that the "||" change is demonstrably orthogonal to it; they are
-// not a claim that rejecting them is correct.
-func TestOrFixPreservesEmptyInputAndCommaHandling(t *testing.T) {
+// These interact in a way that is easy to get wrong, which is why they are
+// tested together. Blank comma items are DROPPED (upstream's rule), and a group
+// left with no items at all is the universal set (also upstream's rule --
+// `SpecifierSet(",")` is universal). Compose those two naively and a comma-only
+// "||" SEGMENT becomes an empty AND-group, which matches everything, which
+// disables the whole constraint -- the same hole a trailing "||" opened, reached
+// by a comma instead.
+//
+// So the rules are: commas are tolerated freely WITHIN a group, and a
+// specifier-less group is universal ONLY when it is the entire input.
+func TestCommaToleranceDoesNotCrossTheOrBoundary(t *testing.T) {
 	t.Run("empty input is still the universal set", func(t *testing.T) {
 		for _, in := range []string{"", "   ", "\t"} {
 			ss, err := NewSpecifiers(in)
@@ -105,17 +109,77 @@ func TestOrFixPreservesEmptyInputAndCommaHandling(t *testing.T) {
 		}
 	})
 
-	t.Run("comma handling is unchanged", func(t *testing.T) {
-		// Rejected before this change and rejected after it. See the divergence
-		// note above.
-		for _, in := range []string{",>=1", ">=1,,<2"} {
-			_, err := NewSpecifiers(in)
-			assert.Error(t, err, "%q: still rejected (upstream accepts; #19391)", in)
+	t.Run("blank comma items are dropped within a group", func(t *testing.T) {
+		// Every one of these is accepted by packaging 26.2 and now here.
+		tests := []struct {
+			in      string
+			wantLen int
+		}{
+			{",>=1", 1},
+			{",,>=1", 1},
+			{">=1,", 1},
+			{">=1,,<2", 2},
+			{">=1,,,<2", 2},
+			{">=1 , , <2", 2},
 		}
-		// A trailing comma is tolerated, and stays tolerated.
-		ss, err := NewSpecifiers(">=1,")
+		for _, tt := range tests {
+			ss, err := NewSpecifiers(tt.in)
+			require.NoError(t, err, "%q must be accepted, as upstream accepts it", tt.in)
+			assert.Equal(t, tt.wantLen, ss.Len(), "input %q", tt.in)
+			// The dropped commas must not turn into a wider constraint.
+			assert.False(t, ss.Check(MustParse("0.1")), "%q must still enforce >=1", tt.in)
+		}
+	})
+
+	t.Run("a comma-only input is universal, matching SpecifierSet(\",\")", func(t *testing.T) {
+		for _, in := range []string{",", ",,", " , ", " , , "} {
+			ss, err := NewSpecifiers(in)
+			require.NoError(t, err, "input %q", in)
+			assert.Equal(t, 0, ss.Len(), "input %q", in)
+			assert.True(t, ss.Check(MustParse("0.1")), "input %q", in)
+		}
+	})
+
+	t.Run("but a comma-only || SEGMENT is an error, not universal", func(t *testing.T) {
+		// ⚠️ THE interaction. Each of these is a real constraint plus a segment
+		// that is nothing but punctuation. Treating that segment as universal
+		// would make the OR admit every version -- the same failure the "||"
+		// fix closed, reached by a comma typo.
+		for _, in := range []string{">=1||,", ",||>=1", ">=1||,,", ">=1|| , ||<2", ">=1,<2||,"} {
+			ss, err := NewSpecifiers(in)
+			if err == nil {
+				assert.False(t, ss.Check(MustParse("0.1")),
+					"%q parsed, and then admitted 0.1 -- a comma-only segment disabled the constraint", in)
+				t.Errorf("%q must be rejected", in)
+			}
+
+			// The R path shares this code and is what PPM uses.
+			rs, rerr := NewRSpecifiers(in, identitySanitizer)
+			if rerr == nil {
+				assert.False(t, rs.Check(MustParse("0.1")),
+					"NewRSpecifiers(%q) parsed, and then admitted 0.1", in)
+				t.Errorf("NewRSpecifiers(%q) must be rejected", in)
+			}
+		}
+	})
+
+	t.Run("commas still work inside every branch of a real OR", func(t *testing.T) {
+		ss, err := NewSpecifiers(",>=1.0,<2.0||,>=10.0,<11.0")
 		require.NoError(t, err)
-		assert.Equal(t, 1, ss.Len())
+		assert.Equal(t, 4, ss.Len())
+		assert.True(t, ss.Check(MustParse("1.5")))
+		assert.True(t, ss.Check(MustParse("10.5")))
+		assert.False(t, ss.Check(MustParse("5.0")))
+	})
+
+	t.Run("dropping commas cannot smuggle in an adjacent pair", func(t *testing.T) {
+		// The comma between two constraints is still REQUIRED (see
+		// TestAdjacentConstraintsRejected). Dropping BLANK items must not
+		// weaken that: what survives is re-joined with commas and revalidated.
+		for _, in := range []string{">=1<2", ">=1 <2", ",>=1<2", ">=1<2,", ",,>=1 <2,,"} {
+			_, err := NewSpecifiers(in)
+			assert.Error(t, err, "%q: a missing comma between constraints stays an error", in)
+		}
 	})
 
 	t.Run("well-formed OR groups still parse", func(t *testing.T) {

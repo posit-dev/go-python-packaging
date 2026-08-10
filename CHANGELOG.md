@@ -9,6 +9,69 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Previously undocumented, shipped in 0.1.0
+
+> ⚠️ **Recorded late.** The two changes below shipped in **`v0.1.0`** (commit
+> `d097655`) and appear nowhere in this file. They are documented here rather than
+> in the `[0.1.0]` section because that release is tagged and the Go module proxy
+> has served it; **a published section is immutable** and backdating into one would
+> claim the release contained a note it did not. See the note at the end of this
+> section about what that implies for anyone assessing an upgrade.
+>
+> They were found by the PPM migration work (rstudio/package-manager#18634) by
+> **diffing the two modules on identical input**, not by reading this changelog —
+> which is exactly why they were found at all. Measured figures below come from
+> that exercise.
+
+- **Prefix matching and `~=` returned wrong answers, on both the Python and R
+  paths.** `padVersion` derived the right-hand version's non-numeric remainder by
+  slicing the **left**-hand version (`rightRest := left[len(rightRelease):]`), so
+  the padded right-hand side was assembled partly out of the left-hand version's
+  segments. This affected every `==X.*`, `!=X.*` and `~=` comparison whose two
+  sides had release segments of different lengths.
+
+  **Measured over the production PyPI corpus: 349 of 135,204 specifier sets change
+  their answer.** Of 928 flipped (specifier, version) pairs, `pypa/packaging` 26.2
+  agrees with the **new** behavior **915** times and with the old **13** times.
+
+  ⚠️ **Correction.** Those 13 were previously described here as *"a separate,
+  pre-existing epoch divergence that this change neither caused nor fixed"*. **That was
+  wrong on both counts, and the correction matters more than the original claim.** They
+  are neither separate nor pre-existing: the retired module answered *correctly* on them,
+  the change made them *wrong*, and the proximate cause is `padVersion` itself — the very
+  function this entry credits with a fix. `==0.0.0.*` began matching `1!1.0` because
+  `versionSplit` does not prepend the epoch, so `"1!1"` failed the digit test, was dropped
+  by the filter, and the padding loops' under-counting made the two sides coincidentally
+  equal.
+
+  So the honest summary of `padVersion` across `v0.1.0` → `v0.4.0` is: it fixed 915 pairs
+  and **broke 13**, and both the residual under-padding and the epoch regression are fixed
+  under `## [Unreleased]` above, verified at 0 of 82 against an oracle that sweeps
+  multi-segment gaps.
+
+- **`NewRSpecifiers` silently discarded the sanitizer argument it was given** and
+  forwarded an identity function instead, so a caller normalizing a non-standard
+  version token before PEP 440 parsing had that normalization ignored. Four CRAN
+  call sites in PPM pass a sanitizer.
+
+  **Measured: 0 differences over real CRAN data** (2,814 constraints), because a
+  difference requires a character outside `[0-9.]` in the version operand and real
+  CRAN constraints contain none. On an adversarial corpus, 1,447 of 135,204 change.
+
+  ⚠️ This one is **invisible in `String()`**, which renders the pre-sanitize text.
+  A consumer comparing rendered output would have seen no difference at all while
+  the matching answers changed underneath it — so the natural way to check for it
+  does not work.
+
+> ### ⚠️ If you are assessing an upgrade, diff behavior — do not read this file
+>
+> This module has now demonstrably shipped **semantic changes with no changelog
+> entry**, and the two above were the largest observable effects in the whole
+> `v0.1.1` → `v0.4.0` range. One of them was additionally invisible in `String()`.
+> A changelog is a best-effort human artifact and CI does not validate it; the only
+> reliable method is to run both versions over your own inputs and compare, which
+> is how these were found.
+
 ### Breaking
 
 - 🔴 **`v0.4.0` shipped a zero-padding bug that made `==X.*`, `!=X.*` and `~=` answer
@@ -78,6 +141,24 @@ mistaken for a safe patch upgrade.
   it is covered directly by the oracle table.) The small real-world count reflects that
   multi-segment-gap wildcards barely occur in real constraint data — **not** that the bug
   was harmless, since it is reachable from arbitrary client input.
+
+- **A wildcard may no longer be combined with a pre-release.** `==1.0a1.*`,
+  `!=2.0rc1.*` and `==1.0alpha3.*` previously parsed and are now rejected, as PEP 440
+  requires and as upstream does.
+
+  `validate()` guarded a wildcard against a dev, post or local version but never against
+  a **pre-release**, so a prefix match on a pre-release was silently accepted. It cannot
+  mean anything: the wildcard covers the release segment, which is exactly where the
+  pre-release marker would have to sit.
+
+  **Measured over the production PyPI snapshot** (25,457 distinct specifier tokens
+  extracted from 932,861 packages): **0 newly rejected**. 1,664 wildcard specifiers occur
+  in that corpus and not one combines a wildcard with a pre-release. **Measured over real
+  CRAN data for the R path** (`NewRSpecifiers`): **0 newly rejected** out of 59,139
+  constraint occurrences. Both null results were instrumented — the extraction pattern
+  was proved to find the four synthetic pre-release-wildcard shapes it is looking for, and
+  the differential harness was proved to report these three specifiers flipping from
+  accepted to rejected when they are appended to the corpus.
 
 - `WithPreRelease(true)` no longer suppresses the operator-level pre-release guards.
 
@@ -315,6 +396,32 @@ mistaken for a safe patch upgrade.
   fix covered only the zero-value/no-groups arm; this is the empty-input arm that
   survived it.
 
+- **A blank comma-separated item is now dropped rather than rejected**, matching
+  upstream. `",>=1"`, `",,>=1"`, `">=1,,<2"` and `">=1 , , <2"` previously errored and
+  now parse; `packaging` 26.2 accepts all of them, because
+  `SpecifierSet.__init__` does `[s.strip() for s in specifiers.split(",") if s.strip()]`.
+  A comma-only input (`","`, `",,"`, `" , "`) is the universal set, which is also what
+  `SpecifierSet(",")` is. A trailing comma was already tolerated and still is.
+
+  This is a widening. Measured over the production PyPI corpus plus real CRAN
+  constraints (28,528 distinct inputs across both paths): **0 newly rejected and 0
+  newly accepted** — no real constraint in either corpus has a leading or doubled
+  comma, so this is a pure conformance fix with no observable effect on real data.
+  The harness was positive-controlled: the six synthetic comma shapes all flip from
+  rejected to accepted on both paths.
+
+  ⚠️ **The comma between two constraints is still required.** `">=1<2"` and
+  `">=1 <2"` remain errors (see 0.4.0). Only *blank* items are dropped, and what
+  survives is re-joined with commas and revalidated, so dropping them cannot smuggle
+  an adjacent pair past the check.
+
+  ⚠️ **The tolerance stops at the `||` boundary**, and this is the one place the
+  package deliberately stops short of upstream. `">=1||,"` is an **error**, not
+  universal. Upstream has no `||` and so has no opinion; but since `||` is an OR and
+  an empty AND-group matches everything, treating a comma-only *segment* as universal
+  would let a stray comma disable the whole constraint — the same failure mode as a
+  stray `||`, described below.
+
   ⚠️ **Only a wholly blank input is universal.** A blank `||` segment is an error:
   `">=1||"`, `"||>=1"` and `">=1||||<2"` are rejected. Since `||` is an OR and an empty
   AND-group matches everything, allowing one would mean a trailing-`||` typo *disabled*
@@ -333,6 +440,97 @@ mistaken for a safe patch upgrade.
   and the exported `Specifier` plus `Filter` are new callers that drive them with
   whatever operand they hold. The regression test builds the shape directly and was
   verified to panic without the fix.
+
+- **Specifier parsing is now case-insensitive, matching version parsing.**
+  `specifierRegexp` carried the `(?i)` flag and the `validConstraintRegexp` gate did not,
+  so the two disagreed: `==1.0a1` parsed while `==1.0A1` was rejected before the parser
+  ever saw it. PEP 440 versions are case-insensitive, and upstream accepts every
+  upper-case spelling (`==1.0DEV`, `==1.0ALPHA1`, `>=7.9A1`, `~=1.0.POST1`, …). This was
+  the single largest source of conformance failures — 303 of 358.
+
+  This is a pure widening: **874** of the production corpus's 25,457 distinct specifier
+  tokens are newly accepted and **0** are newly rejected.
+
+- **A vertical tab is accepted as surrounding whitespace in a specifier.** Go's `\s` is
+  `[\t\n\f\r ]` and excludes `\v` (0x0B) where Python's includes it, so `<=  \r \f \v
+  v1.0` was rejected. `versionRegex` had already been fixed for this; the two specifier
+  patterns had not.
+
+- **Four PEP 440 matching rules corrected**, all found by the ported tables and all now
+  agreeing with `pypa/packaging` 26.2:
+
+  - **`<V` and a pre-release of V.** The guard compared *base versions*, so for the spec
+    `1.0.post1` it treated `1.0.dev0` as "a pre-release of the specified version" —
+    both have base version 1.0. But `1.0.dev0` is a pre-release of `1.0`, not of
+    `1.0.post1`. Now compared against the earliest pre-release of the spec
+    (upstream's `_earliest_prerelease`), which is where PEP 440 draws the boundary.
+  - **`>V` and a post-release of V.** Same base-version error in the other direction: for
+    the spec `1.0a1` it excluded `1.0.post0`, which is a post-release of `1.0`, not of
+    `1.0a1`. Now uses upstream's `_post_base`.
+  - **`>V` and a local version of V.** "A local version of V" means one whose *public*
+    part equals V, pre/post/dev included. Comparing base versions made `>1.0a1` wrongly
+    reject `1.0a2+local`.
+  - **Prefix matching and `~=`.** `versionSplit` did not split the epoch off as its own
+    component, so `==0!2.*` could not match `2`; and padding happened between the two
+    sides rather than up to the spec's numeric width, so `2` did not match `==2.0.0.*`.
+    `~=` derived its prefix by breaking only on `post`/`dev`, so a pre-release operand
+    (`~=1.0a1`) produced the wrong prefix. The upstream helpers (`_version_split`,
+    `_version_join`, `_is_not_suffix`, `_numeric_prefix_len`, `_left_pad`) are now ported
+    directly.
+
+  **Measured over the production corpus:** 12 of 25,457 distinct specifier tokens change
+  their match results — all `>`/`<` against a pre-release or post-release operand
+  (`>1a2`, `>1rc1`, `<1r`, …). Every one of those 12, plus 5 synthetic controls, was
+  checked against `pypa/packaging` 26.2 over a 19-version panel: **0 of 17 agreed with the
+  reference before, 17 of 17 agree after.** No rendered form changed.
+
+### Added
+
+- **Conformance tables ported from `pypa/packaging`'s `tests/test_specifiers.py`**
+  (`version/specifier_conformance_test.go`, `version/specifierset_conformance_test.go`),
+  pinned at `4eb0753dba8fcaaac8eb75463374e448f0931558`. Attribution is in `NOTICE`.
+
+  **1,613 Go leaf subtests** (1,649 counting the table parents), of which **358 failed
+  against the pre-fix library**.
+
+  Every expectation was cross-checked against two independent sources — the literal in
+  the pinned upstream file *and* what the installed `packaging` 26.2 actually answers — so
+  a stale literal cannot be baked in silently. All of them agreed.
+
+  **Denominator, stated explicitly**, because an earlier draft of this entry got it wrong.
+  `tests/test_specifiers.py` at that commit collects **2,031 test cases** from 116 test
+  functions; **1,985** of those come from the 70 parametrized functions and the remaining
+  46 from unparametrized ones. (Reconciliation: 1,939 cases with `VERSIONS` unresolved,
+  plus the 92 entries of `VERSIONS` imported from `tests/test_version.py`, is 2,031.)
+
+  ⚠️ The earlier figure of "1,735 parametrized cases" was **wrong and is withdrawn**. It
+  came from a counter that only evaluated *module-level* assignments, so every
+  `parametrize` referring to `TestIsUnsatisfiable`'s `UNSATISFIABLE`/`SATISFIABLE`
+  **ClassVars** — declared inside the class — failed to evaluate and was silently counted
+  as one case instead of its real size. It also coincidentally equalled the sum of three
+  approximate buckets quoted alongside it, which is precisely why an unreconciled figure
+  should not have been presented as exact.
+
+  Not ported, with the reason recorded in each file's header: the interval subsystem
+  behind `is_subset`/`is_superset`/`is_disjoint`/`is_unsatisfiable`, pickling, and the
+  Python-implementation internals (`__match_args__`, `__hash__`, one-element caches,
+  construction laziness, `to_range` equivalence).
+
+  ⚠️ **The size of that scope cut was also understated.** The four set-relation and
+  unsatisfiability APIs account for **259 cases**, not the "~25" previously claimed — a
+  ~10× understatement, because `TestIsUnsatisfiable` alone is **222** cases (77
+  unsatisfiable + 87 satisfiable + 23 + 17 + assorted). `TestSpecifierInternal` is a
+  further 18 and `TestSpecifierSetToRangeEquivalence` 290. The cut is a considered
+  decision, not a small one: those APIs rest on packaging 26.2's interval machinery
+  (`_to_ranges`, `_intersect_ranges`, `_LowerBound`/`_UpperBound`), which has no
+  counterpart in this module.
+
+### Notes
+
+- The 163 rows of the hand-written `TestVersion_Check` table were audited against
+  `packaging` 26.2. **No row disagrees with the reference** where both implementations
+  parse the input; the only flagged rows are this package's four documented deliberate
+  extensions (a bare version, the `=` operator, `*` for "any", and `||` for the R path).
 
 ## [0.4.0] - 2026-08-10
 

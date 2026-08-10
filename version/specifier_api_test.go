@@ -111,19 +111,32 @@ func TestNewSpecifier_RejectsAnyComma(t *testing.T) {
 // stricter alias of the other: the trailing comma the set tolerates on purpose
 // is still tolerated there, and only the singular constructor rejects it.
 //
-// ⚠️ Scope note: on this branch the set grammar accepts a TRAILING comma only.
-// Leading and doubled commas are a separate widening (upstream drops every blank
-// comma item) that lands with the conformance tables in
-// rstudio/package-manager#19391, and the fuller contrast table lives there.
+// On this branch the set grammar also drops leading and doubled blank comma
+// items, so the contrast covers every comma position: each of these is legal for
+// a SET and an error for a SINGLE specifier, exactly as in packaging 26.2.
 func TestNewSpecifiersStillAcceptsTheTrailingCommaTheSingularRejects(t *testing.T) {
-	for _, in := range []string{">=1,", ">=1 , ", ">= 1.0,"} {
-		t.Run(fmt.Sprintf("%q", in), func(t *testing.T) {
-			ss, err := NewSpecifiers(in)
-			require.NoError(t, err, "the SET grammar must still accept %q", in)
-			assert.Equal(t, 1, ss.Len())
+	tests := []struct {
+		in      string
+		wantLen int
+	}{
+		{">=1,", 1},
+		{">=1 , ", 1},
+		{">= 1.0,", 1},
+		{",>=1", 1},
+		{",,>=1", 1},
+		{">=1,,", 1},
+		{" , >=1", 1},
+		{",", 0},
+		{",,", 0},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%q", tt.in), func(t *testing.T) {
+			ss, err := NewSpecifiers(tt.in)
+			require.NoError(t, err, "the SET grammar must still accept %q", tt.in)
+			assert.Equal(t, tt.wantLen, ss.Len())
 
-			_, err = NewSpecifier(in)
-			assert.Error(t, err, "the SINGULAR grammar must reject %q", in)
+			_, err = NewSpecifier(tt.in)
+			assert.Error(t, err, "the SINGULAR grammar must reject %q", tt.in)
 		})
 	}
 
@@ -131,6 +144,26 @@ func TestNewSpecifiersStillAcceptsTheTrailingCommaTheSingularRejects(t *testing.
 	ss, err := NewSpecifiers(">=1,<2")
 	require.NoError(t, err)
 	assert.Equal(t, 2, ss.Len())
+}
+
+// The two grammars are independent about commas and must stay IDENTICAL about
+// everything else. A divergence in case-sensitivity or whitespace handling would
+// be a fresh version of the inconsistency that splitting them removed.
+func TestSingularAndSetGrammarsAgreeOnEverythingButCommas(t *testing.T) {
+	// Every one of these is comma-free, so both grammars must accept all of them.
+	for _, in := range []string{
+		">=1.0", ">= 1.0", ">=  v1.0  ", "==1.0DEV", "!=1.0ALPHA1", ">=7.9A1",
+		"~=1.0.POST1", "==1.0.*", "===lolwat", "2.0", "1!2.0", "1.0+local",
+		"<=  \r \f \v v1.0\t\n",
+	} {
+		t.Run(fmt.Sprintf("%q", in), func(t *testing.T) {
+			_, singularErr := NewSpecifier(in)
+			_, setErr := NewSpecifiers(in)
+			assert.Equal(t, setErr == nil, singularErr == nil,
+				"the two grammars must agree on %q (set err=%v, singular err=%v)", in, setErr, singularErr)
+			assert.NoError(t, singularErr, "and both must accept it")
+		})
+	}
 }
 
 // And the tightening must not narrow any well-formed single specifier. This is

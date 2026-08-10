@@ -106,6 +106,31 @@ TestRequirementParsing, licensed under the Apache License, Version 2.0.
 Translated from Python/pytest to Go table-driven tests; the parametrize
 cross-product is expressed as a curated subset with equivalent coverage.
 
+The version/ package's conformance tests port the PEP 440 version-specifier
+cases of pypa/packaging (https://github.com/pypa/packaging), Copyright (c)
+Donald Stufft and individual contributors, specifically
+tests/test_specifiers.py's classes TestSpecifier and TestSpecifierSet, pinned
+at commit 4eb0753dba8fcaaac8eb75463374e448f0931558 (release 26.2), licensed
+under the Apache License, Version 2.0. Translated from Python/pytest to Go
+table-driven tests, in version/specifier_conformance_test.go and
+version/specifierset_conformance_test.go. Upstream tests resting on
+implementation details with no counterpart here are not ported, and the reason
+is recorded in each file's header: the interval subsystem behind is_subset /
+is_superset / is_disjoint / is_unsatisfiable, pickling, __match_args__,
+__hash__, the one-element specifier-version caches, construction laziness, and
+the SpecifierSet.to_range equivalence class. Where a Go expectation differs
+from upstream's literal assertion the divergence is annotated inline at its
+table.
+
+The version/ package's specifier-matching helpers (versionSplit, versionJoin,
+isNotSuffix, numericPrefixLen, leftPad) and the pre-release, post-release and
+local-version boundary rules in its comparison functions are ported from
+pypa/packaging's packaging/specifiers.py, specifically _version_split,
+_version_join, _is_not_suffix, _numeric_prefix_len, _left_pad,
+_earliest_prerelease, _post_base, _public_version, and the bodies of
+Specifier._compare_equal, _compare_compatible, _compare_less_than and
+_compare_greater_than, licensed under the Apache License, Version 2.0.
+
 The internal/proptest package's property tests are adapted from
 pypa/packaging's Hypothesis property suite (https://github.com/pypa/packaging),
 Copyright (c) Donald Stufft and individual contributors, specifically

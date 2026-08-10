@@ -74,6 +74,83 @@ func TestNewSpecifier_RejectsASet(t *testing.T) {
 	}
 }
 
+// A comma has no place in a SINGLE specifier, in any position.
+//
+// ⚠️ `NewSpecifier(">=1,")` used to be ACCEPTED, silently yielding the single
+// specifier `>=1`. The cause was a coupling rather than a typo: NewSpecifier
+// validated with validConstraintRegexp, the SET grammar, which tolerates a
+// trailing comma deliberately. That leniency is correct for a set and wrong for
+// a single specifier, and borrowing the grammar inherited it. NewSpecifier now
+// has its own anchored single-constraint grammar.
+//
+// Upstream draws the same line, measured against packaging 26.2:
+//
+//	Specifier(">=1,")      -> InvalidSpecifier    SpecifierSet(">=1,")   -> len 1
+//	Specifier(",>=1")      -> InvalidSpecifier    SpecifierSet(",>=1")   -> len 1
+//	Specifier(",")         -> InvalidSpecifier    SpecifierSet(",")      -> len 0
+func TestNewSpecifier_RejectsAnyComma(t *testing.T) {
+	for _, in := range []string{
+		">=1,",   // trailing -- the one that was accepted
+		",>=1",   // leading
+		">=1,,",  // trailing doubled
+		",,>=1",  // leading doubled
+		",",      // nothing but a comma
+		",,",     //
+		">=1 , ", // trailing with spaces
+		" , >=1", // leading with spaces
+	} {
+		t.Run(fmt.Sprintf("%q", in), func(t *testing.T) {
+			_, err := NewSpecifier(in)
+			assert.Error(t, err, "NewSpecifier(%q) must reject a comma", in)
+		})
+	}
+}
+
+// The set constructor must be UNAFFECTED by the singular tightening. This is
+// what makes the two grammars genuinely independent rather than one being a
+// stricter alias of the other: the trailing comma the set tolerates on purpose
+// is still tolerated there, and only the singular constructor rejects it.
+//
+// ⚠️ Scope note: on this branch the set grammar accepts a TRAILING comma only.
+// Leading and doubled commas are a separate widening (upstream drops every blank
+// comma item) that lands with the conformance tables in
+// rstudio/package-manager#19391, and the fuller contrast table lives there.
+func TestNewSpecifiersStillAcceptsTheTrailingCommaTheSingularRejects(t *testing.T) {
+	for _, in := range []string{">=1,", ">=1 , ", ">= 1.0,"} {
+		t.Run(fmt.Sprintf("%q", in), func(t *testing.T) {
+			ss, err := NewSpecifiers(in)
+			require.NoError(t, err, "the SET grammar must still accept %q", in)
+			assert.Equal(t, 1, ss.Len())
+
+			_, err = NewSpecifier(in)
+			assert.Error(t, err, "the SINGULAR grammar must reject %q", in)
+		})
+	}
+
+	// A comma-separated set is of course still a set.
+	ss, err := NewSpecifiers(">=1,<2")
+	require.NoError(t, err)
+	assert.Equal(t, 2, ss.Len())
+}
+
+// And the tightening must not narrow any well-formed single specifier. This is
+// the "did I break something real" half: every shape here parsed before and must
+// still parse.
+func TestNewSpecifier_StillAcceptsEveryWellFormedSingle(t *testing.T) {
+	for _, in := range []string{
+		">=1", ">=1.0", ">= 1.0", "== 1.0", "==1.0", "!=1.0", "<2", "<=2", ">2",
+		"~=2.0", "==2.1.*", "!=2.2.*", "===lolwat", "===1.0",
+		">=  v1.0  ", "  >=1.0  ", ">=1.0\t", "\t>=1.0\n",
+		"2.0", "1.2.3", "1!2.0", "1.0+local", // bare versions: this package's extension
+		">=1.0.dev1", ">=7.9a1", "<1.0.dev1", ">2.0.post1",
+	} {
+		t.Run(fmt.Sprintf("%q", in), func(t *testing.T) {
+			_, err := NewSpecifier(in)
+			assert.NoError(t, err, "NewSpecifier(%q) must still be accepted", in)
+		})
+	}
+}
+
 func TestNewSpecifier_Invalid(t *testing.T) {
 	for _, in := range []string{"", "=>2.0", "==", "~=1", ">=1.0+deadbeef", "<1.0.*"} {
 		t.Run(fmt.Sprintf("%q", in), func(t *testing.T) {

@@ -5,9 +5,8 @@ package version
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"regexp"
-	"strconv"
+	"slices"
 	"strings"
 )
 
@@ -67,9 +66,18 @@ func init() {
 	// "===" must not be decomposed into "==" + "=".
 	const arbitraryOperand = `[^\s,;)]+`
 
+	// ⚠️ The whitespace class must be [\s\v], not \s. Go's \s is [\t\n\f\r ]
+	// and EXCLUDES the vertical tab (0x0B); Python's re \s is [ \t\n\r\f\v] and
+	// includes it. With a bare \s, the operator/operand separator would not
+	// match "\v", so `<=  \r \f \v v1.0` was rejected while pypa/packaging
+	// accepts it. versionRegex was already fixed for this; the specifier
+	// patterns were not.
+	const wsp = `[\s\v]`
+
 	specifierRegexp = regexp.MustCompile(
 		fmt.Sprintf(
-			`(?i)(?:(?P<arbitraryop>===)\s*(?P<arbitrary>%s)|(?P<operator>(%s))\s*(?P<version>%s(\.\*)?))`,
+			`(?i)(?:(?P<arbitraryop>===)%[1]s*(?P<arbitrary>%[2]s)|(?P<operator>(%[3]s))%[1]s*(?P<version>%[4]s(\.\*)?))`,
+			wsp,
 			arbitraryOperand,
 			strings.Join(ops, "|"),
 			regex,
@@ -84,7 +92,8 @@ func init() {
 	// GET /repos/:repo/packages/:key/doc?version=<raw> passes a bare version
 	// through NewRSpecifiers. Do not remove it while tightening the comma.
 	constraint := fmt.Sprintf(
-		`(?:===\s*%s|(%s)\s*(%s(\.\*)?))`,
+		`(?:===%[1]s*%[2]s|(%[3]s)%[1]s*(%[4]s(\.\*)?))`,
+		wsp,
 		arbitraryOperand,
 		strings.Join(ops, "|"),
 		regex,
@@ -108,8 +117,17 @@ func init() {
 	// Go's regexp permits a capture-group name to repeat, so embedding the
 	// version pattern twice needs no name stripping. Verified rather than
 	// assumed -- it is the opposite of Python's rule.
+	// ⚠️ The (?i) flag is REQUIRED here and was missing.
+	//
+	// specifierRegexp has it, this gate did not, so the two disagreed about
+	// case: `==1.0a1` passed the gate and parsed, while `==1.0A1` was rejected
+	// by the gate before specifierRegexp ever saw it. PEP 440 versions are
+	// case-insensitive, and pypa/packaging accepts every upper-case spelling
+	// (`==1.0DEV`, `==1.0ALPHA1`, `>=7.9A1`, `~=1.0.POST1`, ...). This was the
+	// single largest source of conformance failures in
+	// tests/test_specifiers.py's normalization table.
 	validConstraintRegexp = regexp.MustCompile(
-		fmt.Sprintf(`^\s*(?:%s\s*(?:,\s*%s\s*)*,?)?\s*$`, constraint, constraint),
+		fmt.Sprintf(`(?i)^%[1]s*(?:%[2]s%[1]s*(?:,%[1]s*%[2]s%[1]s*)*,?)?%[1]s*$`, wsp, constraint),
 	)
 
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
@@ -327,9 +345,15 @@ func validate(operator, version string) error {
 
 	switch operator {
 	case "", "=", "==", "!=":
-		if hasWildcard && (!v.dev.isNull() || !v.post.isNull() || v.local != "") {
+		// ⚠️ The PRE-release arm was missing. This guard checked dev, post and
+		// local but never pre, so `==1.0a1.*` and `!=2.0a1.*` were wrongly
+		// ACCEPTED while pypa/packaging rejects them. PEP 440 does not allow a
+		// wildcard alongside any of the four, and a prefix match against a
+		// pre-release is meaningless: the wildcard covers the release segment,
+		// which is where the pre-release marker would have to sit.
+		if hasWildcard && (!v.pre.isNull() || !v.dev.isNull() || !v.post.isNull() || v.local != "") {
 			return errors.New(
-				"the (non)equality operators don't allow to use a wild card and a dev, post, or local version together",
+				"the (non)equality operators don't allow to use a wild card and a pre, dev, post, or local version together",
 			)
 		}
 	case "~=":
@@ -475,52 +499,103 @@ func andCheck(v Version, specifiers []Specifier) bool {
 	return true
 }
 
+// versionSplit splits a version string into the components prefix matching and
+// the compatible operator compare, ported from pypa/packaging 26.2's
+// _version_split.
+//
+// Two details are load-bearing and were both missing from the earlier
+// hand-rolled version:
+//
+//   - The EPOCH is split off on "!" and becomes the first component, defaulting
+//     to "0". Without it, `2` and `0!2` split to different lengths and
+//     `==0!2.*` failed to match `2` even though they are the same version.
+//   - A release-plus-pre-release run in one dot-segment ("2rc1") is split into
+//     two components ("2", "rc1"), so that a pre-release behaves as its own
+//     segment for prefix purposes.
+//
+// The result is for comparison only; joining it back with versionJoin does not
+// necessarily reproduce the input.
 func versionSplit(version string) []string {
 	var result []string
-	for _, v := range strings.Split(version, ".") {
-		m := prefixRegexp.FindStringSubmatch(v)
-		if m != nil {
+
+	// rpartition on "!": everything before the LAST "!" is the epoch.
+	epoch := "0"
+	rest := version
+	if i := strings.LastIndex(version, "!"); i >= 0 {
+		if version[:i] != "" {
+			epoch = version[:i]
+		}
+		rest = version[i+1:]
+	}
+	result = append(result, epoch)
+
+	for _, item := range strings.Split(rest, ".") {
+		if m := prefixRegexp.FindStringSubmatch(item); m != nil {
 			result = append(result, m[1:]...)
 		} else {
-			result = append(result, v)
+			result = append(result, item)
 		}
 	}
 	return result
 }
 
-func isDigist(s string) bool {
-	if _, err := strconv.Atoi(s); err == nil {
-		return true
+// versionJoin rebuilds a version string from a versionSplit result, ported from
+// pypa/packaging 26.2's _version_join. The first component is the epoch.
+func versionJoin(components []string) string {
+	if len(components) == 0 {
+		return ""
 	}
-	return false
+	return components[0] + "!" + strings.Join(components[1:], ".")
 }
 
-func padVersion(left, right []string) ([]string, []string) {
-	var leftRelease, rightRelease []string
-	for _, l := range left {
-		if isDigist(l) {
-			leftRelease = append(leftRelease, l)
+// isNotSuffix reports whether a versionSplit component is part of the release
+// segment rather than a pre/post/dev suffix. Ported from pypa/packaging 26.2's
+// _is_not_suffix; it is the predicate the compatible operator uses to find
+// where the release segment ends.
+func isNotSuffix(segment string) bool {
+	for _, prefix := range []string{"dev", "a", "b", "rc", "post"} {
+		if strings.HasPrefix(segment, prefix) {
+			return false
 		}
 	}
+	return true
+}
 
-	for _, r := range right {
-		if isDigist(r) {
-			rightRelease = append(rightRelease, r)
+// numericPrefixLen counts the leading all-digit components of a versionSplit
+// result. Ported from pypa/packaging 26.2's _numeric_prefix_len.
+func numericPrefixLen(split []string) int {
+	count := 0
+	for _, segment := range split {
+		if !isASCIIDigits(segment) {
+			break
 		}
+		count++
 	}
+	return count
+}
 
-	// Get the rest of our versions
-	leftRest := left[len(leftRelease):]
-	rightRest := right[len(rightRelease):]
-
-	for i := 0; i < len(leftRelease)-len(rightRelease); i++ {
-		rightRelease = append(rightRelease, "0")
+// leftPad pads a versionSplit result with "0" components until it has
+// targetNumericLen numeric components, preserving any suffix components.
+// Ported from pypa/packaging 26.2's _left_pad.
+//
+// ⚠️ The padding is inserted AFTER the numeric prefix and BEFORE the suffix,
+// which is what the earlier padVersion got wrong: it padded only to the other
+// side's length and reassembled the two halves symmetrically, so `2` compared
+// against the spec `2.0.0.*` was never widened to three numeric components and
+// the prefix match failed.
+func leftPad(split []string, targetNumericLen int) []string {
+	numericLen := numericPrefixLen(split)
+	padNeeded := targetNumericLen - numericLen
+	if padNeeded <= 0 {
+		return split
 	}
-	for i := 0; i < len(rightRelease)-len(leftRelease); i++ {
-		leftRelease = append(leftRelease, "0")
+	out := make([]string, 0, len(split)+padNeeded)
+	out = append(out, split[:numericLen]...)
+	for i := 0; i < padNeeded; i++ {
+		out = append(out, "0")
 	}
-
-	return append(leftRelease, leftRest...), append(rightRelease, rightRest...)
+	out = append(out, split[numericLen:]...)
+	return out
 }
 
 //-------------------------------------------------------------------
@@ -557,52 +632,74 @@ func specifierCompatible(prospective Version, spec string) bool {
 	// This allows us to implement this in terms of the other specifiers instead of implementing it ourselves.
 	// The only thing we need to do is construct the other specifiers.
 
+	// Everything but the last item of the RELEASE segment. The loop stops at the
+	// first suffix component, so a pre-release in the operand is not mistaken
+	// for part of the release.
+	//
+	// ⚠️ The earlier version broke only on "post" and "dev", so a pre-release
+	// operand kept its "a1"/"rc1" component and then had it dropped as "the
+	// last item" -- which made `~=1.0a1` derive the prefix `1.*` rather than
+	// dropping only the release's last component. versionSplit now also
+	// prepends the epoch, so the operand and the prospective version agree on
+	// component count.
 	var prefixElements []string
 	for _, s := range versionSplit(spec) {
-		if strings.HasPrefix(s, "post") || strings.HasPrefix(s, "dev") {
+		if !isNotSuffix(s) {
 			break
 		}
 		prefixElements = append(prefixElements, s)
 	}
+	if len(prefixElements) == 0 {
+		// Unreachable for a validated "~=" operand: the grammar requires at
+		// least two release digits, so there is always an epoch component and
+		// at least two release components.
+		return false
+	}
 
-	// We want everything but the last item in the version, but we want to ignore post and dev releases, and
-	// we want to treat the pre-release as its own separate segment.
-	prefix := strings.Join(prefixElements[:len(prefixElements)-1], ".")
-
-	// Add the prefix notation to the end of our string
-	prefix += ".*"
+	prefix := versionJoin(prefixElements[:len(prefixElements)-1]) + ".*"
 
 	return specifierGreaterThanEqual(prospective, spec) && specifierEqual(prospective, prefix)
 }
 
 func specifierEqual(prospective Version, spec string) bool {
-	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/specifiers.py#L476
-	// We need special logic to handle prefix matching
+	// We need special logic to handle prefix matching. Ported from
+	// pypa/packaging 26.2's Specifier._compare_equal.
 	if strings.HasSuffix(spec, ".*") {
-		// In the case of prefix matching we want to ignore local segment.
+		// In the case of prefix matching we want to ignore the local segment.
 		public, ok := parseOperand(prospective.Public())
 		if !ok {
 			return false
 		}
 		prospective = public
 
-		// Split the spec out by dots, and pretend that there is an implicit
-		// dot in between a release segment and a pre-release segment.
-		splitSpec := versionSplit(strings.TrimSuffix(spec, ".*"))
+		// Split the spec out by bangs and dots, pretending there is an implicit
+		// dot between a release segment and a pre-release segment. The operand
+		// goes through Parse first so that its normalized form (leading zeros,
+		// separator spellings, letter case) is what gets split -- otherwise
+		// `==1.01.*` and `==1.1.*` would split differently.
+		operand := strings.TrimSuffix(spec, ".*")
+		specVersion, ok := parseOperand(operand)
+		if !ok {
+			return false
+		}
+		splitSpec := versionSplit(specVersion.String())
+		specNumericLen := numericPrefixLen(splitSpec)
 
-		// Split the prospective version out by dots, and pretend that there is an implicit dot
-		//  in between a release segment and a pre-release segment.
 		splitProspective := versionSplit(prospective.String())
 
-		// Shorten the prospective version to be the same length as the spec
-		// so that we can determine if the specifier is a prefix of the
-		// prospective version or not.
-		if len(splitProspective) > len(splitSpec) {
-			splitProspective = splitProspective[:len(splitSpec)]
+		// ⚠️ Pad BEFORE shortening. Padding the prospective version up to the
+		// spec's numeric width first is what lets `2` match `==2.0.0.*`: it
+		// becomes ["0","2","0","0"], which then truncates to the spec exactly.
+		// Truncating first would have thrown away the room the padding needs.
+		paddedProspective := leftPad(splitProspective, specNumericLen)
+
+		// Shorten the prospective version to the spec's length, so that the
+		// question becomes whether the spec is a prefix of it.
+		if len(paddedProspective) > len(splitSpec) {
+			paddedProspective = paddedProspective[:len(splitSpec)]
 		}
 
-		paddedSpec, paddedProspective := padVersion(splitSpec, splitProspective)
-		return reflect.DeepEqual(paddedSpec, paddedProspective)
+		return slices.Equal(paddedProspective, splitSpec)
 	}
 
 	specVersion, ok := parseOperand(spec)
@@ -637,33 +734,27 @@ func specifierLessThan(prospective Version, spec string) bool {
 		return false
 	}
 
-	// This special case is here so that, unless the specifier itself includes is a pre-release version,
-	// that we do not accept pre-release versions for the version mentioned in the specifier
-	// (e.g. <3.1 should not match 3.1.dev0, but should match 3.0.dev0).
+	// PEP 440: "<V MUST NOT allow a pre-release of the specified version unless
+	// the specified version is itself a pre-release."
 	//
-	// ⚠️ This guard is MATCHING, not candidate selection: no pre-release
-	// policy turns it off. `<3.1` does not contain `3.1.dev0` even with
+	// ⚠️ This guard is MATCHING, not candidate selection: no pre-release policy
+	// turns it off. `<3.1` does not contain `3.1.dev0` even with
 	// PreReleasesInclude, which is what pypa/packaging 26.2 does.
+	//
+	// ⚠️ "a pre-release OF the specified version" is a lower bound, not a
+	// shared base version. The earlier `sameBaseVersion` test was far too
+	// broad: for the spec `1.0.post1` it treated `1.0.dev0` as a pre-release of
+	// it, because both have base version 1.0 -- but `1.0.dev0` is a pre-release
+	// of `1.0`, not of `1.0.post1`, and upstream accepts it. Comparing against
+	// the EARLIEST pre-release of the spec draws the boundary where PEP 440
+	// puts it.
 	if !s.IsPreRelease() && prospective.IsPreRelease() {
-		if sameBaseVersion(prospective, s) {
+		earliest, ok := s.earliestPreRelease()
+		if ok && prospective.GreaterThanOrEqual(earliest) {
 			return false
 		}
 	}
 	return true
-}
-
-// sameBaseVersion reports whether two versions share a base version (release
-// segment and epoch, with pre/post/dev/local discarded).
-func sameBaseVersion(a, b Version) bool {
-	av, ok := parseOperand(a.BaseVersion())
-	if !ok {
-		return false
-	}
-	bv, ok := parseOperand(b.BaseVersion())
-	if !ok {
-		return false
-	}
-	return av.Equal(bv)
 }
 
 func specifierGreaterThan(prospective Version, spec string) bool {
@@ -679,21 +770,31 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 		return false
 	}
 
-	// This special case is here so that, unless the specifier itself includes is a post-release version,
-	// that we do not accept post-release versions for the version mentioned in the specifier
-	// (e.g. >3.1 should not match 3.0.post0, but should match 3.2.post0).
+	// PEP 440: ">V MUST NOT allow a post-release of the specified version unless
+	// the specified version is itself a post-release."
 	//
 	// ⚠️ Matching, not candidate selection. See specifierLessThan.
+	//
+	// ⚠️ "a post-release OF the specified version" means the version this one is
+	// a post-release of IS the spec, exactly. The earlier `sameBaseVersion` test
+	// was too broad: for the spec `1.0a1` it excluded `1.0.post0`, because both
+	// have base version 1.0 -- but `1.0.post0` is a post-release of `1.0`, not
+	// of `1.0a1`, and upstream accepts it.
 	if !s.IsPostRelease() && prospective.IsPostRelease() {
-		if sameBaseVersion(prospective, s) {
+		if base, ok := prospective.postBase(); ok && base.Equal(s) {
 			return false
 		}
 	}
 
-	// Ensure that we do not allow a local version of the version mentioned
-	//  in the specifier, which is technically greater than, to match.
+	// PEP 440: ">V MUST NOT match a local version of the specified version."
+	//
+	// ⚠️ A "local version of V" is one whose PUBLIC part equals V -- pre, post
+	// and dev segments included. `sameBaseVersion` discarded those, so `>1.0a1`
+	// wrongly rejected `1.0a2+local`: same base version 1.0, but a different
+	// public version, and upstream matches it.
 	if prospective.local != "" {
-		if sameBaseVersion(prospective, s) {
+		public, ok := parseOperand(prospective.Public())
+		if ok && public.Equal(s) {
 			return false
 		}
 	}

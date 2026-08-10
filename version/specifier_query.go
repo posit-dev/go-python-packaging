@@ -13,6 +13,7 @@ package version
 
 import (
 	"errors"
+	"slices"
 	"strings"
 )
 
@@ -216,12 +217,22 @@ func (ss Specifiers) FilterVersions(items []Version, opts ...FilterOption) []Ver
 	return filterGeneric(ss, items, Version.String, opts)
 }
 
-// Equal reports whether two sets hold the same specifiers, compared
-// canonically and irrespective of order, duplicates, or pre-release policy.
-// It is upstream's SpecifierSet.__eq__.
+// Equal reports whether two sets are the same constraint, compared
+// canonically: insensitive to the order of the OR-groups, to the order and
+// duplication of members within a group, to trailing zeros and letter case in
+// an operand, and to the pre-release policy. It is upstream's
+// SpecifierSet.__eq__, extended to this type's OR-of-ANDs shape.
+//
+// ⚠️ It is NOT insensitive to which members share a group, because that is what
+// the constraint IS. `">=1||<2"` admits every version and `">=1,<2"` admits
+// only their intersection, so they must not compare equal even though they hold
+// the same two members. An earlier version compared a flattened List and did
+// report them equal — a wrong equality is especially costly, because it makes
+// whatever is built on top of it (dedupe, caches, guards, tests that use it as
+// an oracle) silently wrong while Equal's own tests still pass.
 func (ss Specifiers) Equal(other Specifiers) bool {
-	left := canonicalKeys(ss)
-	right := canonicalKeys(other)
+	left := canonicalGroupKeys(ss)
+	right := canonicalGroupKeys(other)
 	if len(left) != len(right) {
 		return false
 	}
@@ -233,19 +244,63 @@ func (ss Specifiers) Equal(other Specifiers) bool {
 	return true
 }
 
-// canonicalKeys is the deduplicated set of canonical specifier renderings,
-// which is what makes Equal blind to order and duplicates.
-func canonicalKeys(ss Specifiers) map[string]struct{} {
-	keys := make(map[string]struct{}, ss.Len())
-	for _, s := range ss.List() {
-		op, operand := s.canonicalSpec()
-		keys[op+operand] = struct{}{}
+// canonicalGroupKeys returns one key per AND-group: the group's canonicalized
+// members, deduplicated and sorted, joined with ",". The result is a SET of
+// group keys, so comparison is blind to group order and to within-group order
+// and duplicates, while conjunction boundaries survive.
+//
+// For a set with a single group — everything a Python-style comma-separated
+// string produces, and so everything the upstream conformance tables exercise —
+// this reduces exactly to the deduplicated, sorted member set.
+func canonicalGroupKeys(ss Specifiers) map[string]struct{} {
+	groups := ss.orGroups()
+	keys := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		members := make([]string, 0, len(group))
+		seen := make(map[string]struct{}, len(group))
+		for _, s := range group {
+			op, operand := s.canonicalSpec()
+			key := op + operand
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			members = append(members, key)
+		}
+		slices.Sort(members)
+		keys[strings.Join(members, ",")] = struct{}{}
 	}
 	return keys
 }
 
-// And returns the intersection of two specifier sets: every specifier from
-// both, which is upstream's `SpecifierSet.__and__`.
+// orGroups returns the AND-groups, normalizing a set with no groups at all (the
+// zero value) to a single EMPTY group.
+//
+// Those two spellings mean the same thing — a set that constrains nothing, see
+// Check — and normalizing here keeps every group-walking operation from having
+// to special-case the zero value. It also makes the universal set the identity
+// of And, which it must be: `universal AND X` is `X`, and a cartesian product
+// against zero groups would instead have produced zero groups.
+func (ss Specifiers) orGroups() [][]Specifier {
+	if len(ss.specifiers) == 0 {
+		return [][]Specifier{nil}
+	}
+	return ss.specifiers
+}
+
+// And returns the intersection of two specifier sets, which is upstream's
+// `SpecifierSet.__and__`.
+//
+// ⚠️ Because this type is an OR of ANDs, intersection DISTRIBUTES; it is not a
+// concatenation. `(A||B) AND (C||D)` is `(A,C) || (A,D) || (B,C) || (B,D)`.
+// Concatenating the members instead produced `A AND B AND C AND D`, which is a
+// strictly narrower and usually unsatisfiable constraint: `(==1.0||==2.0) AND
+// <3.0` became `==1.0,==2.0,<3.0` and matched nothing at all, rejecting the two
+// versions it should have admitted.
+//
+// Upstream never has more than one group, so for two Python-style sets this
+// collapses to the single concatenated group upstream produces, duplicates
+// included.
 //
 // The pre-release policies are combined rather than dropped. PreReleasesAuto
 // on one side yields to the other; two identical explicit policies survive;
@@ -257,15 +312,28 @@ func (ss Specifiers) And(other Specifiers) (Specifiers, error) {
 		return Specifiers{}, err
 	}
 
-	combined := append(ss.List(), other.List()...)
-	// Re-stamp each member with the combined policy so a specifier read back
-	// off the result answers PreReleases consistently with the set.
-	for i := range combined {
-		combined[i].pre = pre
+	left := ss.orGroups()
+	right := other.orGroups()
+
+	groups := make([][]Specifier, 0, len(left)*len(right))
+	for _, l := range left {
+		for _, r := range right {
+			group := make([]Specifier, 0, len(l)+len(r))
+			group = append(group, l...)
+			group = append(group, r...)
+			// Re-stamp each member with the combined policy so a specifier read
+			// back off the result answers PreReleases consistently with the
+			// set. The append above copied the values, so this cannot reach
+			// back into either operand.
+			for i := range group {
+				group[i].pre = pre
+			}
+			groups = append(groups, group)
+		}
 	}
 
 	return Specifiers{
-		specifiers: [][]Specifier{combined},
+		specifiers: groups,
 		conf:       conf{preReleases: pre},
 	}, nil
 }

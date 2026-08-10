@@ -192,8 +192,16 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		o.apply(c)
 	}
 
+	segments, universal, err := splitOrSegments(v)
+	if err != nil {
+		return Specifiers{}, err
+	}
+	if universal {
+		return universalSpecifiers(*c), nil
+	}
+
 	var sss [][]Specifier
-	for _, vv := range strings.Split(v, "||") {
+	for _, vv := range segments {
 		if strings.TrimSpace(vv) == "*" {
 			vv = ">=0.0.0"
 		}
@@ -222,8 +230,16 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 		o.apply(c)
 	}
 
+	segments, universal, err := splitOrSegments(v)
+	if err != nil {
+		return Specifiers{}, err
+	}
+	if universal {
+		return universalSpecifiers(*c), nil
+	}
+
 	var sss [][]Specifier
-	for _, vv := range strings.Split(v, "||") {
+	for _, vv := range segments {
 		if strings.TrimSpace(vv) == "*" {
 			vv = ">=0.0.0"
 		}
@@ -240,6 +256,56 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 		conf:       *c,
 	}, nil
 
+}
+
+// splitOrSegments splits the input on the "||" OR operator.
+//
+// universal is true when the ENTIRE input is empty or whitespace, which is the
+// one and only way to get a set that constrains nothing. In that case segments
+// is nil and the caller must not parse anything.
+//
+// ⚠️ An empty "||" segment is an ERROR, not the universal set.
+//
+// This is the whole point of the function, and it is worth being explicit about
+// why, because the obvious-looking alternative is a silent, invisible failure.
+// "||" is an OR, and Check admits a version if ANY group matches; a group with
+// no specifiers in it matches everything. So if ">=1||" were allowed to parse
+// as `>=1 OR (nothing)`, the trailing typo would not narrow the constraint or
+// raise an error -- it would DISABLE it, and ">=1||" would admit 0.1. The R
+// entry point shares this path and is what PPM uses for R version constraints,
+// so the visible symptom would be "the wrong versions were allowed", with
+// nothing logged and nothing failing.
+//
+// A leading, trailing or doubled "||" is therefore rejected. Note that this is
+// specifically about the "||" boundary: comma handling inside a group is a
+// separate question, decided in parseGroup.
+func splitOrSegments(v string) (segments []string, universal bool, err error) {
+	if strings.TrimSpace(v) == "" {
+		return nil, true, nil
+	}
+
+	segments = strings.Split(v, "||")
+	for _, segment := range segments {
+		if strings.TrimSpace(segment) == "" {
+			return nil, false, fmt.Errorf(
+				"improper constraint: empty || segment in %q (a leading, trailing or doubled || is not allowed)", v)
+		}
+	}
+	return segments, false, nil
+}
+
+// universalSpecifiers returns the set that constrains nothing: exactly one
+// AND-group, containing no specifiers.
+//
+// It is spelled as one EMPTY group rather than as zero groups so that the two
+// readings of "no constraints" cannot drift apart -- Check treats zero groups
+// and an empty group the same way, and both mean "admits every version" (see
+// Check, and rstudio/package-manager#19366).
+func universalSpecifiers(c conf) Specifiers {
+	return Specifiers{
+		specifiers: [][]Specifier{nil},
+		conf:       c,
+	}
 }
 
 // NewSpecifier parses a single PEP 440 version specifier, such as `>=1.2.3`.
@@ -271,22 +337,38 @@ func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
 
 // parseGroup parses one AND-group: a comma-separated run of specifiers.
 //
-// An empty group is legal and yields zero specifiers, which is how
-// `NewSpecifiers("")` becomes the universal set rather than an error. Upstream
-// reaches the same place from the other end, by dropping empty items after
-// splitting on the comma (`[s.strip() for s in specifiers.split(",") if
-// s.strip()]`), which is also why it accepts a leading or doubled comma.
+// ⚠️ parseGroup NEVER returns an empty group, and must not be changed to.
+//
+// An empty AND-group matches every version (a conjunction over no constraints
+// is vacuously true), so inside an OR it does not widen the set a little -- it
+// makes the whole set universal. Returning one from here for a blank input is
+// what made ">=1||" admit 0.1: the trailing "||" produced a blank segment, the
+// blank segment produced an empty group, and the empty group swallowed the
+// ">=1". A malformed constraint went from "error" to "silently allows
+// everything".
+//
+// The universal set has exactly one producer, and it is not this function: see
+// universalSpecifiers, reached only when the ENTIRE input is blank. Callers
+// guarantee that by rejecting blank "||" segments in splitOrSegments, so a
+// blank input reaching here is a caller bug and is reported as an error.
+//
+// A blank group is not the same question as a blank comma-separated ITEM.
+// Upstream drops empty comma-split items (`[s.strip() for s in
+// specifiers.split(",") if s.strip()]`), which is why `packaging` accepts
+// ",>=1" and ">=1,,<2"; this package still rejects both, via
+// validConstraintRegexp, and that remaining divergence is tracked in
+// rstudio/package-manager#19391. Either way it is a question about members
+// within a group, never about whether the group itself may be empty.
 func parseGroup(vv string, sanitizer func(string) string, c conf) ([]Specifier, error) {
+	if strings.TrimSpace(vv) == "" {
+		return nil, fmt.Errorf("improper constraint: empty constraint group")
+	}
 	if !validConstraintRegexp.MatchString(vv) {
 		return nil, fmt.Errorf("improper constraint: %s", vv)
 	}
 
 	found := specifierRegexp.FindAllString(vv, -1)
 	if found == nil {
-		if strings.TrimSpace(vv) == "" {
-			// The universal set. Not an error, and NOT a floor of zero.
-			return nil, nil
-		}
 		found = append(found, strings.TrimSpace(vv))
 	}
 
@@ -482,6 +564,15 @@ func (ss Specifiers) Len() int {
 
 // List returns the individual specifiers, flattened across OR-groups in input
 // order. It is the iteration upstream gets from `iter(SpecifierSet)`.
+//
+// ⚠️ List is for ITERATION, not for SEMANTICS. It discards the OR-of-ANDs
+// structure, so `">=1||<2"` and `">=1,<2"` flatten to the same two members
+// while meaning opposite things: the first admits every version, the second
+// admits only their intersection. Anything that decides whether two sets are
+// the same, or what a set matches, must walk the groups instead — see
+// orGroups, Equal and matchAll. Deciding a predicate from a flattened List is
+// how Equal came to report `">=1||<2"` equal to `">=1,<2"`, and how And came
+// to collapse `(A||B) AND C` into `A AND B AND C`.
 func (ss Specifiers) List() []Specifier {
 	out := make([]Specifier, 0, ss.Len())
 	for _, group := range ss.specifiers {

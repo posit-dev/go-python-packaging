@@ -118,6 +118,19 @@ mistaken for a safe patch upgrade.
   `len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0"))` is 2 in packaging 26.2 — while
   `Equal` is blind to order and duplicates.
 
+  ⚠️ **`And` and `Equal` respect this type's OR-of-ANDs shape**, which upstream has no
+  equivalent of (the `||` operator is this package's extension for the R constraint
+  path). `And` **distributes**: `(A||B) AND C` is `(A,C) || (B,C)`, not `A AND B AND C`.
+  `Equal` compares the set of canonicalized AND-groups, so `">=1||<2"` does **not** equal
+  `">=1,<2"` — they hold the same members but mean opposite things, the first admitting
+  every version and the second only their intersection. For a single-group set, which is
+  everything a Python-style comma-separated string produces, both reduce exactly to
+  upstream's behavior.
+
+  ⚠️ **`List()` is for iteration, not semantics.** It flattens across OR-groups, so it
+  cannot be used to decide what a set matches or whether two sets are the same. Its doc
+  comment says so. `Len()` likewise counts members across all groups.
+
 - `marker.Environment.With(map[string]string)`, `Environment.Lookup(name)` and
   `marker.VariableNames()`: the override seam a **partial** marker environment needs.
 
@@ -135,6 +148,14 @@ mistaken for a safe patch upgrade.
   `SpecifierSet('')` as valid, of length zero, and containing every version. The 0.3.0
   fix covered only the zero-value/no-groups arm; this is the empty-input arm that
   survived it.
+
+  ⚠️ **Only a wholly blank input is universal.** A blank `||` segment is an error:
+  `">=1||"`, `"||>=1"` and `">=1||||<2"` are rejected. Since `||` is an OR and an empty
+  AND-group matches everything, allowing one would mean a trailing-`||` typo *disabled*
+  the constraint rather than narrowing it — `">=1||"` would admit `0.1` — with nothing
+  erroring and nothing logged. Behavior is unchanged from 0.4.0, where such input was
+  also an error. Measured against real CRAN data for the R path: `||` does not occur at
+  all in 59,139 constraint occurrences, so nothing real is affected.
 
 - The six `MustParse` calls on the matching hot path (`version/specifier.go`) no longer
   panic on an operand that is not a valid version; a comparison that cannot be made

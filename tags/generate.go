@@ -67,8 +67,12 @@ func cpTags(t Target, plats []string) []Tag {
 	// this slot and in the descending walk below. The two are mutually
 	// exclusive, so there is a single stable-ABI name here rather than two
 	// tiers.
+	//
+	// The floor is a version comparison, matching _abi3_applies' own
+	// `tuple(python_version) >= (3, 2)`: a hypothetical Python 4.0 target still
+	// gets the stable ABI. Pinned by the cp40 golden fixture.
 	stableABI := ""
-	if t.PyMajor == 3 && t.PyMinor >= 2 {
+	if versionAtLeast(t.PyMajor, t.PyMinor, 3, 2) {
 		if t.FreeThreaded {
 			stableABI = "abi3t"
 		} else {
@@ -168,6 +172,26 @@ func pyInterpreterRange(major, minor int) []string {
 
 func interpTag(prefix string, major, minor int) string {
 	return prefix + strconv.Itoa(major) + strconv.Itoa(minor)
+}
+
+// versionAtLeast reports whether (major, minor) >= (floorMajor, floorMinor),
+// compared as a version.
+//
+// It exists because the obvious spelling of a version floor --
+// "major == floorMajor && minor >= floorMinor" -- is not one. It silently
+// answers "no" for every input whose major differs, including every input
+// ABOVE the floor. Upstream compares Python versions as tuples
+// (packaging.tags._abi3_applies does `tuple(python_version) >= (3, 2)`), which
+// is lexicographic; so does this.
+//
+// Use it for every (major, minor) floor in this package. The one place that
+// deliberately does NOT is manylinuxTags -- see the comment there, which
+// records what upstream does across glibc majors and why we do not follow it.
+func versionAtLeast(major, minor, floorMajor, floorMinor int) bool {
+	if major != floorMajor {
+		return major > floorMajor
+	}
+	return minor >= floorMinor
 }
 
 // platformTags returns the target's platform component strings (there is
@@ -270,11 +294,30 @@ func linuxPlatformTags(t Target) []string {
 // manylinuxTags returns "manylinux_<major>_<minor>_<arch>" for every glibc
 // version from the target's declared version down to the architecture's
 // floor (inclusive), newest first, interleaving legacy aliases immediately
-// after the version they alias. Only floors within the target's declared
-// glibc major version are considered (per the Global Constraints rule,
-// stated only for glibc major 2, which every currently defined floor uses);
-// a target whose major doesn't match its floor's, or whose declared version
-// is below the floor, yields no manylinux tags.
+// after the version they alias.
+//
+// This is the one (major, minor) floor in this package that is deliberately NOT
+// the lexicographic versionAtLeast comparison: only glibc versions sharing the
+// target's declared major are considered, so a target whose major differs from
+// its floor's yields no manylinux tags at all.
+//
+// That IS a divergence from upstream, and it is a considered one rather than an
+// oversight. packaging's _manylinux.platform_tags walks older majors too --
+// "We can assume compatibility across glibc major versions", citing
+// sourceware bug 24636 -- and to enumerate them it needs to know the last minor
+// version each older major reached. It gets that from _LAST_GLIBC_MINOR, a
+// defaultdict whose fallback is 50 and whose own comment reads "guess what the
+// highest minor version might be, assume it will be 50 for testing. Once this
+// actually happens, update the dictionary with the actual value."
+//
+// Mirroring that would mean this library materializing up to ~50 tags per older
+// major naming glibc releases that do not exist, on the strength of a
+// placeholder upstream flags as a guess. glibc's major has been 2 since 1997,
+// so no reachable input distinguishes the two behaviors; between a documented
+// narrower answer and a confidently-invented wider one, the narrow answer is
+// the safer default for a server deciding which wheel to hand a client. If
+// glibc 3 ever ships, this is the function to revisit, and the real
+// _LAST_GLIBC_MINOR[2] will be a fact by then rather than a guess.
 func manylinuxTags(arch string, major, minor int) []string {
 	floor, ok := manylinuxFloor[arch]
 	if !ok {
@@ -297,20 +340,19 @@ func manylinuxTags(arch string, major, minor int) []string {
 	return out
 }
 
-// musllinuxMajor is the only musl ABI major version musllinux tags are
-// currently defined for (PEP 656); unlike manylinux/glibc, musl has not yet
-// had an ABI-breaking major-version bump requiring a musllinux_2_* series.
-const musllinuxMajor = 1
-
 // musllinuxTags returns "musllinux_<major>_<minor>_<arch>" for every musl
 // version from the target's declared version down to musllinux_<major>_0,
-// newest first. Unlike manylinux there is no architecture-dependent floor or
-// legacy alias. A target whose major doesn't match musllinuxMajor yields no
-// musllinux tags, mirroring manylinuxTags' major-version guard.
+// newest first. Unlike manylinux there is no architecture-dependent floor and
+// there are no legacy aliases.
+//
+// The declared major is used verbatim, which is what upstream does:
+// _musllinux.platform_tags yields
+// "musllinux_{sys_musl.major}_{minor}" over range(minor, -1, -1), with no
+// notion of a single blessed major. Every musl release to date is 1.x, so this
+// only matters for a musl 2 that does not exist yet -- but hardcoding "1" here
+// meant a musl 2 target silently got NO musllinux tags at all, which is a worse
+// answer than the obvious one. Pinned by the musl 2.3 golden fixture.
 func musllinuxTags(arch string, major, minor int) []string {
-	if major != musllinuxMajor {
-		return nil
-	}
 	out := make([]string, 0, minor+1)
 	for m := minor; m >= 0; m-- {
 		out = append(out, fmt.Sprintf("musllinux_%d_%d_%s", major, m, arch))
@@ -353,7 +395,11 @@ func macosBinaryFormatsFor(major, minor int, arch string) []string {
 		// and every entry there has a macosBinaryFormats list.
 		panic("tags: no binary formats for macOS arch " + arch)
 	}
-	if arch == "x86_64" && major == 10 && minor < macosFatBinaryFloorMinor {
+	// Upstream's gate is the tuple comparison `version < (10, 4)`, so it is a
+	// version comparison here too rather than a same-major one. (Target.validate
+	// rejects a macOS major below 10, so the two agree on every reachable
+	// input; spelling it as a version keeps it agreeing if that ever changes.)
+	if arch == "x86_64" && !versionAtLeast(major, minor, 10, macosFatBinaryFloorMinor) {
 		return nil
 	}
 	return formats

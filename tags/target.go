@@ -164,6 +164,20 @@ func (t Target) validateABI() error {
 		if t.Implementation != "cp" {
 			return fmt.Errorf("%w: FreeThreaded requires implementation \"cp\", got %q", ErrUnsupportedTarget, t.Implementation)
 		}
+		// Note this is an exact-major check, NOT the lexicographic
+		// versionAtLeast used for version floors elsewhere in this package.
+		// That is deliberate, and it is a statement about what has been
+		// measured rather than a prediction about future Pythons.
+		//
+		// "3.13+" is where a free-threaded build exists and where
+		// packaging's _cpython_abis will put a "t" in the ABI tag. There is no
+		// Python 4, so there is no reference implementation to check a cp40t
+		// spelling against -- and the free-threaded ABI is exactly the kind of
+		// thing whose spelling is easy to get subtly wrong. Accepting an
+		// unknown major would have this package emit tags it has never
+		// validated against anything, which is worse than refusing an input
+		// nobody can currently produce. Widen it when there is something real
+		// to measure.
 		if t.PyMajor != 3 || t.PyMinor < freeThreadedMinMinor {
 			return fmt.Errorf("%w: free-threaded CPython starts at 3.%d, got %d.%d", ErrUnsupportedTarget, freeThreadedMinMinor, t.PyMajor, t.PyMinor)
 		}

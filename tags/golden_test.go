@@ -29,6 +29,18 @@ var goldenTargets = map[string]Target{
 		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
 		Libc: "musl", LibcMajor: 1, LibcMinor: 2,
 	},
+	// A hypothetical musl major bump. upstream's _musllinux.platform_tags uses
+	// the major it is given verbatim, so musllinux_2_3 down to musllinux_2_0.
+	"cp312_musl23_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
+		Libc: "musl", LibcMajor: 2, LibcMinor: 3,
+	},
+	// A hypothetical Python major bump. upstream gates the stable ABI on a
+	// lexicographic (major, minor) >= (3, 2), so a 4.0 target still gets abi3.
+	"cp40_glibc239_x86_64.json": {
+		Implementation: "cp", PyMajor: 4, PyMinor: 0, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 39,
+	},
 	"cp310_macos12_arm64.json": {
 		Implementation: "cp", PyMajor: 3, PyMinor: 10, OS: "macos", Arch: "arm64",
 		MacMajor: 12, MacMinor: 0,

@@ -123,6 +123,27 @@ func TestBaselinesFor(t *testing.T) {
 	none, err := BaselinesFor("manylinux_2_99_x86_64")
 	require.NoError(t, err)
 	assert.Empty(t, none)
+
+	// A tag whose floor has a LOWER major must select every glibc baseline:
+	// glibc 2.x satisfies ">= 1.0". This is a version comparison, not a
+	// same-major one. No such tag occurs in practice -- glibc's major has been
+	// 2 for the whole manylinux era -- but the comparison has to be a
+	// comparison, or it silently answers "none" instead of "all".
+	lowerMajor := distros(t, "manylinux_1_0_x86_64")
+	var everyGlibc []string
+	for _, b := range Baselines() {
+		if b.Libc == "glibc" {
+			everyGlibc = append(everyGlibc, b.Distro+" "+b.Release)
+		}
+	}
+	require.NotEmpty(t, everyGlibc)
+	assert.Equal(t, everyGlibc, lowerMajor,
+		"a lower-major floor must select every recorded glibc baseline")
+	// ...and symmetrically, a HIGHER-major floor must select none of them.
+	assert.Empty(t, distros(t, "manylinux_3_0_x86_64"))
+	// The same holds for musl.
+	assert.Empty(t, distros(t, "musllinux_2_0_x86_64"))
+	assert.Contains(t, distros(t, "musllinux_0_9_x86_64"), "alpine 3.20")
 }
 
 func TestBaselinesFor_Errors(t *testing.T) {

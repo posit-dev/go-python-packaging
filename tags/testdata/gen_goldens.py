@@ -121,6 +121,24 @@ write_linux("cp39_glibc217_aarch64.json", (3, 9), "cp39", "aarch64", "glibc", 2,
 # tags at all (this target has no glibc).
 write_linux("cp312_musl12_x86_64.json", (3, 12), "cp312", "x86_64", "musl", 1, 2)
 
+# cp312, x86_64, musl 2.3: a HYPOTHETICAL musl major bump, recorded to pin what
+# the reference does with a musl major other than 1. packaging's
+# _musllinux.platform_tags uses the detected major verbatim
+# ("musllinux_{sys_musl.major}_{minor}") and walks the minor to 0 -- it has no
+# notion of a "musllinux_1 only" restriction. No musl 2 exists, so this fixture
+# is not reachable from a real host; it exists to keep our generator's handling
+# of the major honest rather than guessed.
+write_linux("cp312_musl23_x86_64.json", (3, 12), "cp312", "x86_64", "musl", 2, 3)
+
+# --- a non-3 Python major ---------------------------------------------------
+#
+# Also hypothetical, and also recorded rather than reasoned about. packaging
+# gates the stable ABI on a LEXICOGRAPHIC version comparison,
+# _abi3_applies -> tuple(python_version) >= (3, 2), so a 4.0 target DOES get
+# cp40-abi3-<plat>. The descending abi3 walk is empty (range(-1, 1, -1)), and
+# _py_interpreter_range((4, 0)) yields just py40 and py4.
+write_linux("cp40_glibc239_x86_64.json", (4, 0), "cp40", "x86_64", "glibc", 2, 39)
+
 # --- macOS targets ----------------------------------------------------------
 #
 # packaging.tags.mac_platforms((major, minor), arch) is directly parameterized

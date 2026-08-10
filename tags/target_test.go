@@ -55,6 +55,36 @@ func TestCompile_AcceptsImplementations(t *testing.T) {
 	}
 }
 
+// TestVersionAtLeast pins the shared version-floor comparison. The cases that
+// matter are the cross-major ones: the bug this helper replaced was spelled
+// "major == floorMajor && minor >= floorMinor", which answers "no" for every
+// input whose major differs -- including inputs comfortably ABOVE the floor.
+func TestVersionAtLeast(t *testing.T) {
+	for _, tc := range []struct {
+		major, minor, floorMajor, floorMinor int
+		want                                 bool
+	}{
+		// Same major: an ordinary minor comparison.
+		{2, 35, 2, 28, true},
+		{2, 28, 2, 28, true},
+		{2, 27, 2, 28, false},
+		// Higher major clears any floor in a lower one. This is the case the
+		// old spelling got wrong.
+		{2, 0, 1, 0, true},
+		{2, 35, 1, 99, true},
+		{4, 0, 3, 2, true},
+		{11, 0, 10, 4, true},
+		// Lower major clears nothing in a higher one.
+		{1, 99, 2, 0, false},
+		{2, 43, 3, 0, false},
+		{10, 15, 11, 0, false},
+	} {
+		got := versionAtLeast(tc.major, tc.minor, tc.floorMajor, tc.floorMinor)
+		assert.Equal(t, tc.want, got,
+			"versionAtLeast(%d, %d, %d, %d)", tc.major, tc.minor, tc.floorMajor, tc.floorMinor)
+	}
+}
+
 // tagStrings stringifies a []Tag for easy Contains/NotContains assertions.
 func tagStrings(tags []Tag) []string {
 	out := make([]string, len(tags))

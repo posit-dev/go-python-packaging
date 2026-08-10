@@ -9,6 +9,41 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tags`: three `(major, minor)` version floors were written as
+  `major == floor.major && minor >= floor.minor`, which is a same-major test
+  rather than a version comparison — it answers "below the floor" for every input
+  whose major differs, *including* inputs above it. All three now go through one
+  lexicographic helper.
+
+  **No currently constructible tag or interpreter reaches any of them**, and the
+  fix is not claimed to change a real-world answer. glibc's major has been 2
+  since 1997, every musl release is 1.x, and there is no Python 4, so each case
+  needs a version that does not exist:
+
+  - `BaselinesFor` returned *no* glibc baselines for a lower-major floor such as
+    `manylinux_1_0_x86_64`, when every recorded glibc 2.x satisfies `>= 1.0`.
+  - A musl target with a major other than 1 got no `musllinux` tags at all.
+    Upstream's `_musllinux.platform_tags` uses the major it is given verbatim, so
+    a musl 2.3 target now yields `musllinux_2_3` down to `musllinux_2_0`.
+  - A Python 4.0 target got no `abi3` tier, where upstream's `_abi3_applies`
+    compares tuples (`>= (3, 2)`) and does emit `cp40-abi3-<platform>`.
+
+  They are fixed because a floor that is not a comparison is wrong on its face,
+  and this is the kind of latent defect that becomes reachable the moment a tag
+  is built from parsed input rather than a fixed list. Both hypothetical cases
+  are pinned by golden fixtures generated from `pypa/packaging` 26.2 rather than
+  hand-written, so the expected output is measured even though no such platform
+  exists yet.
+
+  `manylinuxTags` deliberately keeps its same-major behavior, now documented in
+  full: matching upstream across glibc majors requires its `_LAST_GLIBC_MINOR`
+  placeholder, a `defaultdict` returning 50 that upstream's own comment calls a
+  guess to be replaced "once this actually happens". Emitting ~50 tags naming
+  glibc releases that do not exist is a worse answer than a documented narrower
+  one.
+
 ### Added
 
 - `tags`: PEP 703 free-threaded CPython targets, via the new `Target.FreeThreaded`.

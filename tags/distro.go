@@ -161,7 +161,10 @@ func BaselinesFor(platformTag string) ([]Baseline, error) {
 		if b.Libc != libc {
 			continue
 		}
-		if b.LibcMajor == major && b.LibcMinor >= minor {
+		// A version comparison, not a same-major one: glibc 2.35 satisfies a
+		// "manylinux_1_0" floor. See versionAtLeast for why the obvious
+		// spelling of this is wrong.
+		if versionAtLeast(b.LibcMajor, b.LibcMinor, major, minor) {
 			out = append(out, b)
 		}
 	}

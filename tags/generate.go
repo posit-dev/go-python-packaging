@@ -15,7 +15,8 @@ import (
 //
 //   - "cp" targets: cp<XY>-cp<XY>-<plat> (exact ABI), then cp<XY>-abi3-<plat>,
 //     then cp<XY>-none-<plat>, then the abi3 walk down through older minor
-//     versions to cp32-abi3-<plat>; followed by the "compatible tier"
+//     versions to cp<X>2-abi3-<plat> -- cp32 for a Python 3 target; the floor is
+//     minor 2 within the target's own major; followed by the "compatible tier"
 //     py<XY>-none-<plat> down to py<X>0-none-<plat>; then cp<XY>-none-any;
 //     then the universal py*-none-any tail. A free-threaded target substitutes
 //     cp<XY>t for the exact ABI and abi3t for abi3 throughout.
@@ -184,11 +185,17 @@ func interpTag(prefix string, major, minor int) string {
 // (packaging.tags._abi3_applies does `tuple(python_version) >= (3, 2)`), which
 // is lexicographic; so does this.
 //
-// Use it for every (major, minor) floor in this package. manylinuxTags does not
-// call it, but not because it wants a same-major test: it walks glibc majors
-// explicitly, mirroring upstream's cross-major compatibility assumption, so a
-// single boolean floor is the wrong shape there rather than the wrong
-// comparison.
+// Use it for every (major, minor) floor in this package, with two deliberate
+// exceptions -- listed so that "this one doesn't use the helper" is never by
+// itself evidence of a bug:
+//
+//   - manylinuxTags does not call it because it walks glibc majors explicitly,
+//     mirroring upstream's cross-major compatibility assumption. A single
+//     boolean floor is the wrong SHAPE there, not the wrong comparison.
+//   - Target.validate's free-threaded gate (target.go) really does want an
+//     exact-major test. It refuses an unknown major rather than flooring it,
+//     because there is no reference implementation to check a Python 4
+//     free-threaded ABI spelling against. See the comment there.
 func versionAtLeast(major, minor, floorMajor, floorMinor int) bool {
 	if major != floorMajor {
 		return major > floorMajor
@@ -274,14 +281,17 @@ var manylinuxFloor = map[string]struct {
 	"ppc64le": {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
 	"s390x":   {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
 	"riscv64": {2, 31, nil},
-	// loongarch64's floor is uv's; pypa/packaging does not yet recognize
-	// this architecture at all.
+	// loongarch64's floor is uv's 2.36. pypa/packaging 26.2 does recognize this
+	// architecture -- it is in _ALLOWED_ARCHS -- but floors it at 2.17 like
+	// every other non-x86 arch; see the divergence note above.
 	"loongarch64": {2, 36, nil},
 }
 
 // linuxPlatformTags builds the ordered platform-tag list for a linux
 // Target: manylinux tags (glibc targets) or musllinux tags (musl targets)
-// from newest to oldest down to the architecture's floor, each accompanied
+// from newest to oldest -- manylinux down to the architecture's floor within the
+// floor's own glibc major and to <major>_0 in any other major, musllinux down to
+// musllinux_<major>_0, since musl has no architecture floor -- each accompanied
 // by any applicable legacy manylinux alias immediately after the version it
 // aliases, followed last by the bare "linux_<arch>" tag -- a deliberate
 // divergence from pypa/packaging (which does not emit bare linux_* tags at
@@ -345,10 +355,25 @@ type glibcVersion struct {
 //     entered at lastGlibcMinor since we cannot know where an unreleased major
 //     will stop.
 //
-// Within the floor's own major the walk bottoms out at the architecture's floor
-// minor (glibc 2.5 on x86_64/i686, 2.17 elsewhere); any other major goes down to
-// <major>_0. A declared version below its architecture's floor still yields
-// nothing.
+// Within the floor's own major the walk bottoms out at that architecture's floor
+// minor from manylinuxFloor -- 2.5 on x86_64/i686, 2.17 on most others, but 2.31
+// on riscv64 and 2.36 on loongarch64; any other major goes down to <major>_0.
+//
+// So "below the floor" has two different answers, and conflating them is how this
+// function's narrower predecessor looked correct:
+//
+//   - A declared version in the floor's OWN major but below its floor minor
+//     yields nothing at all. glibc 2.12 on aarch64 emits no manylinux tag,
+//     because that architecture's manylinux series begins at 2.17.
+//   - A declared version in a LOWER major yields that major's own walk,
+//     manylinux_<major>_<minor> down to manylinux_<major>_0, and no major-2 tags
+//     (upstream only walks *older* majors, never newer ones). glibc 1.5 on
+//     x86_64 emits manylinux_1_5 through manylinux_1_0. Measured against
+//     packaging 26.2 and pinned by TestLinux_CrossGlibcMajor.
+//
+// If you are here because tags are being emitted where you expected none, it is
+// probably the second case, and it is deliberate -- see the paragraph below on
+// why being narrower than upstream is the expensive direction.
 //
 // Being no NARROWER than upstream is the property that matters here, because the
 // consumer of this list is pip's own tag logic. A tag naming a glibc release

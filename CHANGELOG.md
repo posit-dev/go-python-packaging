@@ -11,6 +11,28 @@ mistaken for a safe patch upgrade.
 
 ### Fixed
 
+- `tags`: pre-3.8 CPython targets got the wrong exact ABI, so they matched no
+  real extension wheel. The ABI carries abiflags — pymalloc `m` below Python 3.8,
+  UCS-4 `u` below 3.3 — which were not emitted, so a CPython 3.7 target claimed
+  `cp37-cp37-<platform>` where the correct tag, and the one **every** real
+  CPython 3.7 extension wheel on PyPI carries, is `cp37-cp37m-<platform>`.
+
+  This is the reachable, real-world case of the same failure the entries below
+  describe: a matcher built for a 3.7 client declined every non-`abi3` binary
+  wheel and silently fell back to an sdist. Affected: all of 2.x, and 3.0–3.7
+  (`cp27mu`, `cp32mu`, `cp35m`, `cp36m`, `cp37m`, …). 3.8 and later were already
+  correct. Now pinned by fixtures generated from `packaging` 26.2 for cp27, cp32
+  and cp37.
+
+  ⚠️ One part of this is only right for Linux targets, and is documented in the
+  package docs rather than silently fixed. `packaging` derives the UCS-4 flag
+  from the *running* interpreter rather than the requested version, so it answers
+  `u` for any declared 2.x target; UCS-4 was the Unix default while Windows and
+  macOS CPython 2.x were UCS-2, which is the `cp27mu` vs `cp27m` split visible on
+  PyPI. This release reproduces `packaging`'s answer, so a Windows or macOS 2.x
+  target names an ABI no real wheel carries. Doing better means deliberately
+  diverging from the reference.
+
 - `tags`: three `(major, minor)` version floors were written as
   `major == floor.major && minor >= floor.minor`, which is a same-major test
   rather than a version comparison — it answers "below the floor" for every input
@@ -107,8 +129,15 @@ mistaken for a safe patch upgrade.
 - `tags`: `Baseline`, `Baselines`, `LookupBaseline` and `BaselinesFor` — a
   compiled-in table of the libc version well-known Linux distribution releases
   ship, layered over the `>=` comparison PEP 600 and PEP 656 actually specify.
-  `LookupBaseline("ubuntu", "22.04").Apply(t)` fills a `Target`'s libc fields
-  from a distribution name; `BaselinesFor("manylinux_2_28_x86_64")` reports which
+  `LookupBaseline` returns `(Baseline, bool)`, and `base.Apply(t)` fills a
+  `Target`'s libc fields from a distribution name:
+
+  ```go
+  base, ok := tags.LookupBaseline("ubuntu", "22.04")
+  m, err := base.Apply(target).Compile()
+  ```
+
+  `BaselinesFor("manylinux_2_28_x86_64")` reports which
   recorded releases can run a wheel carrying that tag, legacy `manylinux1`/`2010`/
   `2014` aliases included. The version numbers are derived mechanically from the
   distributions' own package repositories; see `tags/data/gen_distro_baselines.py`

@@ -199,6 +199,60 @@ func TestLinux_CrossGlibcMajor(t *testing.T) {
 	})
 }
 
+// TestLinux_NarrowNonX86Floors pins the riscv64/loongarch64 manylinux
+// divergence documented in doc.go. It asserts THIS PACKAGE'S current, narrower
+// output rather than upstream's, which is why it is hand-written instead of a
+// generated golden fixture: a fixture from packaging would record the wider
+// answer and fail.
+//
+// It exists so that changing manylinuxFloor is a deliberate test update rather
+// than silent drift, and so the size of the gap is written down somewhere
+// executable. Measured against packaging 26.2 for these same targets, in order:
+// loongarch64/glibc 2.35 gives packaging 582 tags to our 42, and
+// riscv64/glibc 2.28 gives 393 to our 42.
+//
+// If you are here because you widened the floors to 2.17 and this test failed:
+// that is the intended interaction. Update the expectations, and add the legacy
+// alias too -- packaging's legacy map is keyed by glibc version alone, so
+// manylinux2014_<arch> applies to these architectures despite manylinuxFloor
+// recording no alias for them.
+func TestLinux_NarrowNonX86Floors(t *testing.T) {
+	for _, tc := range []struct {
+		arch                 string
+		libcMajor, libcMinor int
+		upstreamTagCount     int
+	}{
+		{"loongarch64", 2, 35, 582},
+		{"riscv64", 2, 28, 393},
+	} {
+		t.Run(tc.arch, func(t *testing.T) {
+			m, err := Target{
+				Implementation: "cp", PyMajor: 3, PyMinor: 12,
+				OS: "linux", Arch: tc.arch,
+				Libc: "glibc", LibcMajor: tc.libcMajor, LibcMinor: tc.libcMinor,
+			}.Compile()
+			require.NoError(t, err)
+			ss := tagStrings(m.Tags())
+
+			// Below its floor this target claims no manylinux tag at all -- not
+			// a shortened list -- so the only platform tag left is the bare one.
+			for _, s := range ss {
+				assert.NotContains(t, s, "manylinux",
+					"%s glibc %d.%d is below its floor and must claim no manylinux tag",
+					tc.arch, tc.libcMajor, tc.libcMinor)
+			}
+			assert.Contains(t, ss, "cp312-cp312-linux_"+tc.arch)
+
+			// The magnitude of the divergence, recorded executably. 42 is the
+			// bare-linux-only tag count; upstreamTagCount is what packaging 26.2
+			// produces for the same target.
+			assert.Len(t, ss, 42)
+			assert.Less(t, len(ss), tc.upstreamTagCount,
+				"this package is narrower than packaging here, by design but not by preference")
+		})
+	}
+}
+
 // TestLinux_BareLinuxRankedLast asserts the deliberate divergence from
 // pypa/packaging: a bare "linux_<arch>" tag is accepted, but ranked below
 // every manylinux/musllinux tag for the same target.

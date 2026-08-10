@@ -54,13 +54,7 @@ func cpTags(t Target, plats []string) []Tag {
 		}
 	}
 
-	// Exact ABI: the free-threaded build's abiflags carry a "t"
-	// (cp313-cp313t-<plat>), which is what makes it a distinct ABI.
-	exactABI := interp
-	if t.FreeThreaded {
-		exactABI += "t"
-	}
-	appendPlatform(interp, exactABI)
+	appendPlatform(interp, cpythonExactABI(t))
 
 	// The stable ABI was introduced in Python 3.2 (PEP 384). A free-threaded
 	// build does not support it -- packaging's _abi3_applies is explicitly
@@ -93,6 +87,62 @@ func cpTags(t Target, plats []string) []Tag {
 	}
 
 	return append(out, compatibleTags(t, plats, interp)...)
+}
+
+// pymallocMaxMinor and ucs4MaxMinor bound the two legacy CPython 3.x abiflags:
+// the pymalloc "m" flag exists for Python 3.x below 3.8 (3.8 removed the
+// distinction), and the UCS-4 "u" flag for 3.x below 3.3 (PEP 393 made the
+// unicode representation dynamic). Both also apply to every Python 2.x.
+const (
+	pymallocMaxMinor = 8
+	ucs4MaxMinor     = 3
+)
+
+// cpythonExactABI is the ABI component of a CPython target's most specific tag,
+// mirroring packaging.tags._cpython_abis. It is NOT simply "cp<XY>": the ABI
+// carries abiflags, in upstream's order
+// "cp<version><threading><debug><pymalloc><ucs4>".
+//
+//	3.13+ free-threaded   cp313t   (PEP 703; see Target.FreeThreaded)
+//	3.3 .. 3.7           cp37m    pymalloc
+//	2.x and 3.0 .. 3.2   cp27mu   pymalloc + UCS-4
+//	3.8+                 cp312    no flags
+//
+// Getting this wrong is not cosmetic. Every real CPython 3.7 extension wheel on
+// PyPI is tagged cp37-cp37m, so emitting a bare "cp37" ABI matches none of them
+// and silently sends a 3.7 client to an sdist.
+//
+// The debug flag "d" is deliberately absent: upstream infers it from the running
+// interpreter (Py_DEBUG, sys.gettotalrefcount, a "_d.pyd" extension suffix),
+// which says nothing about a declared target, and debug-build wheels are not
+// published.
+//
+// ⚠️ Known caveat on the UCS-4 flag, inherited from upstream's host coupling.
+// upstream reads Py_UNICODE_SIZE and falls back to sys.maxunicode, so on any
+// modern host it answers "u" for a declared 2.7 target no matter which OS that
+// target names. In reality UCS-4 was the Unix default while Windows and macOS
+// CPython 2.7 were UCS-2 -- that is exactly the cp27mu vs cp27m split visible on
+// PyPI. This function reproduces upstream's answer, which is right for Linux
+// targets and wrong for a Windows or macOS 2.x target. Doing better means
+// diverging from the reference (emitting both variants, or keying "u" off
+// Target.OS), so it is recorded rather than decided here; see doc.go.
+func cpythonExactABI(t Target) string {
+	abi := interpTag("cp", t.PyMajor, t.PyMinor)
+	if t.FreeThreaded {
+		abi += "t"
+	}
+	// Upstream's gates are the tuple comparisons `py_version < (3, 8)` and
+	// `py_version < (3, 3)`, so these are version comparisons -- the negation of
+	// versionAtLeast -- and not bare minor checks. Writing them as
+	// "PyMajor < 3 || PyMinor < 8" instead puts an "m" on a Python 4.0 target,
+	// which the cp40 golden fixture catches immediately.
+	if !versionAtLeast(t.PyMajor, t.PyMinor, 3, pymallocMaxMinor) {
+		abi += "m"
+	}
+	if !versionAtLeast(t.PyMajor, t.PyMinor, 3, ucs4MaxMinor) {
+		abi += "u"
+	}
+	return abi
 }
 
 // implTags mirrors packaging.tags.generic_tags followed by the compatible tier

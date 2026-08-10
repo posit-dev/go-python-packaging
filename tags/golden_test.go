@@ -29,6 +29,21 @@ var goldenTargets = map[string]Target{
 		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
 		Libc: "musl", LibcMajor: 1, LibcMinor: 2,
 	},
+	// Pre-3.8 CPython abiflags: pymalloc "m" below 3.8, UCS-4 "u" below 3.3.
+	// cp37-cp37m is the spelling every real CPython 3.7 extension wheel on PyPI
+	// carries, so these are conformance cases, not curiosities.
+	"cp37_glibc217_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 7, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 17,
+	},
+	"cp27_glibc25_x86_64.json": {
+		Implementation: "cp", PyMajor: 2, PyMinor: 7, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 5,
+	},
+	"cp32_glibc25_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 2, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 5,
+	},
 	// A hypothetical glibc major bump. upstream assumes compatibility across
 	// glibc majors, so these claim the whole glibc 2 series below them, capped
 	// at the assumed last minor of an older major (lastGlibcMinor).
@@ -93,6 +108,58 @@ var goldenTargets = map[string]Target{
 	},
 }
 
+// hostControlFile is handled by TestHostSysTagsControl rather than TestGolden:
+// it has a different shape (a self-describing object, not a bare array) and a
+// different purpose.
+const hostControlFile = "host_sys_tags_control.json"
+
+// hostControl mirrors host_sys_tags_control.json.
+type hostControl struct {
+	Why    string            `json:"why"`
+	Host   map[string]string `json:"host"`
+	Target Target            `json:"target"`
+	Tags   []string          `json:"tags"`
+}
+
+// TestHostSysTagsControl is the one non-circular check in this package's golden
+// suite, and it exists because the rest of the suite cannot be one.
+//
+// Every other fixture is produced by handing packaging explicit platform and ABI
+// lists, and the linux ones by monkeypatching its glibc/musl detection. That is
+// what makes arbitrary declared targets reachable, but it means those fixtures
+// only exercise packaging's tag assembly -- never its host detection -- and a
+// consistent misunderstanding on our side of how to drive packaging would be
+// faithfully baked into both the fixture and the implementation. Agreement would
+// prove only self-consistency.
+//
+// This fixture is instead the output of a bare packaging.tags.sys_tags() -- no
+// arguments, no patching, the same call pip makes -- recorded alongside the
+// Target fields describing the machine it ran on. Matching it byte for byte and
+// in order means that for at least one real interpreter on one real host, this
+// package's generation agrees with upstream end to end with nothing of ours in
+// the loop.
+//
+// The fixture is committed, so this test is host-independent. Only REGENERATION
+// is host-specific: gen_goldens.py writes it on CPython/macOS 11+/Windows and
+// leaves it alone elsewhere.
+func TestHostSysTagsControl(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", hostControlFile))
+	require.NoError(t, err)
+	var ctrl hostControl
+	require.NoError(t, json.Unmarshal(b, &ctrl))
+	require.NotEmpty(t, ctrl.Tags)
+	require.NotEmpty(t, ctrl.Why, "the fixture must carry its own rationale")
+
+	m, err := ctrl.Target.Compile()
+	require.NoError(t, err)
+	var got []string
+	for _, tag := range m.Tags() {
+		got = append(got, tag.String())
+	}
+	require.Equal(t, ctrl.Tags, got,
+		"unpatched sys_tags() on %v disagrees with the equivalent declared Target", ctrl.Host)
+}
+
 // TestGolden asserts that Target.Compile().Tags(), stringified in order,
 // exactly matches the ordered tag list recorded by gen_goldens.py.
 func TestGolden(t *testing.T) {
@@ -100,6 +167,9 @@ func TestGolden(t *testing.T) {
 	require.NotEmpty(t, files)
 	for _, f := range files {
 		name := filepath.Base(f)
+		if name == hostControlFile {
+			continue // different shape; see TestHostSysTagsControl
+		}
 		t.Run(name, func(t *testing.T) {
 			var want []string
 			b, err := os.ReadFile(f)

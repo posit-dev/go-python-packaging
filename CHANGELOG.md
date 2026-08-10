@@ -9,6 +9,51 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Breaking
+
+- A comma is required between version constraints in a specifier set. `>=1.0<2.0`,
+  `>= 7 < 10` and `>= 1.0 != 1.3.4.* < 2.0` previously parsed and are now rejected, as
+  PEP 440 requires and as upstream does.
+
+  They did not merely parse. `validConstraintRegexp` made the separator optional, and
+  combined with the deliberately-admitted empty operator (a bare version is a valid
+  constraint) it **rendered a comma the input never contained**: `==0.1dev10.3` became the
+  constraint `==0.1dev10` plus a bare-version constraint `3`, rendering `==0.1dev10,3`. That
+  is a fabricated constraint boundary, the same defect class as the tokenizer fix in 0.3.0
+  reached by a different route, and it completes that fix.
+
+  **Measured over the production PyPI snapshot** (2,804,136 distinct requirement strings):
+  exactly **21 newly rejected, 0 newly accepted**. Every one is a version operand whose
+  match is a proper prefix leaving a valid second token, so every one previously rendered a
+  comma from nowhere. All sampled forms were confirmed rejected by `pypa/packaging` 26.2, so
+  this closes a divergence rather than creating one.
+
+  **Measured over real CRAN data for the R path** (`NewRSpecifiers`, which PPM uses for R
+  constraint parsing): **no change at all** — 58,656 constraint occurrences, 2,939 distinct
+  expressions, identical accept/reject before and after. R constraints in practice are a
+  single operator and version; the corpus contains no comma-less pair. The change was
+  verified to actually reject six adjacency shapes and to leave twelve load-bearing forms
+  untouched, so that null result reflects the data rather than an inert change.
+
+  **Deliberately unchanged:** a bare version is still a valid constraint (PPM passes one
+  through `NewRSpecifiers`; narrowing it is tracked separately in
+  rstudio/package-manager#18634), and a trailing comma is still tolerated, which upstream
+  also accepts. Narrowing one thing at a time is what keeps the blast radius measurable.
+
+  ⚠️ The Python and R entry points diverge on dash-containing input, by design:
+  `newRSpecifiers` rewrites `-` to `.` before validating, so `>=0-12.1` is the single
+  constraint `>=0.12.1` there, while on the Python path PEP 440 reads `0-12` as the
+  post-release `0.post12` and the trailing `.1` makes it an adjacent pair. There is a test
+  pinning both halves.
+
+### Fixed
+
+- Five `TestVersion_Check` cases were written space-separated (`>= 1.0 != 1.3.4.* < 2.0`)
+  and asserted as valid, pinning a leniency the reference implementation does not have.
+  Measured against `pypa/packaging` 26.2, that form raises `InvalidSpecifier` while the
+  comma form parses. Rewritten to the comma-separated form PEP 440 actually uses; the intent
+  of each case (the conjunction) is unchanged.
+
 ### Fixed
 
 - No method on a zero-value `Version` panics. Eight of the thirteen exported methods did:

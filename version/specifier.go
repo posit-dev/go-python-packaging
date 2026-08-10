@@ -24,9 +24,10 @@ var (
 		"===": specifierArbitrary,
 	}
 
-	specifierRegexp       *regexp.Regexp
-	validConstraintRegexp *regexp.Regexp
-	prefixRegexp          *regexp.Regexp
+	specifierRegexp        *regexp.Regexp
+	validConstraintRegexp  *regexp.Regexp
+	singleConstraintRegexp *regexp.Regexp
+	prefixRegexp           *regexp.Regexp
 )
 
 // orderedOperatorPatterns returns the regexp-quoted comparison operators in a
@@ -128,6 +129,25 @@ func init() {
 	// tests/test_specifiers.py's normalization table.
 	validConstraintRegexp = regexp.MustCompile(
 		fmt.Sprintf(`(?i)^%[1]s*(?:%[2]s%[1]s*(?:,%[1]s*%[2]s%[1]s*)*,?)?%[1]s*$`, wsp, constraint),
+	)
+
+	// EXACTLY ONE constraint, with no comma anywhere: the grammar for the
+	// SINGULAR NewSpecifier.
+	//
+	// ⚠️ This exists because NewSpecifier must NOT borrow the set grammar above.
+	// The set grammar tolerates a trailing comma on purpose, and that leniency
+	// leaked straight into the singular constructor: `NewSpecifier(">=1,")` was
+	// accepted and silently yielded the single specifier `>=1`, contradicting
+	// NewSpecifier's own documented contract. Upstream draws the line sharply --
+	// measured against packaging 26.2, `Specifier(">=1,")`, `Specifier(",>=1")`
+	// and `Specifier(",")` all raise InvalidSpecifier while the corresponding
+	// SpecifierSet calls all succeed.
+	//
+	// One rule, one copy. A singular constructor validating with the plural
+	// grammar is a coupling that breaks silently whenever the plural grammar
+	// moves, which is exactly how this was introduced.
+	singleConstraintRegexp = regexp.MustCompile(
+		fmt.Sprintf(`^\s*%s\s*$`, constraint),
 	)
 
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
@@ -324,22 +344,40 @@ func universalSpecifiers(c conf) Specifiers {
 // NewSpecifier parses a single PEP 440 version specifier, such as `>=1.2.3`.
 //
 // It is the singular counterpart to NewSpecifiers and mirrors upstream's
-// `Specifier(spec, prereleases=...)` constructor. A comma-separated set is not
-// a single specifier: pass those to NewSpecifiers instead.
+// `Specifier(spec, prereleases=...)` constructor.
+//
+// A COMMA is rejected outright, in any position — `">=1,<2"`, `">=1,"`,
+// `",>=1"` and `","` are all errors. A comma is set punctuation and has no
+// meaning inside one specifier, and upstream agrees: measured against
+// packaging 26.2, `Specifier` raises `InvalidSpecifier` for every one of those
+// while the corresponding `SpecifierSet` calls all succeed. Pass a set to
+// NewSpecifiers instead.
+//
+// Whitespace is permitted and stripped (`">= 1.0"`, `">=  v1.0  "`), and a bare
+// version with no operator is accepted as this package's deliberate extension
+// for the R path (see the validConstraintRegexp comment in init).
 func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
 	c := new(conf)
 	for _, o := range opts {
 		o.apply(c)
 	}
 
-	// Reject anything the specifier grammar does not accept in full, so that
-	// NewSpecifier(">=1,<2") is an error rather than a silent ">=1" with the
-	// rest dropped on the floor. specifierRegexp is unanchored (Specifiers
-	// scans with it), so a bare FindStringSubmatch would happily match a
-	// prefix.
-	if !validConstraintRegexp.MatchString(s) {
+	// Validate against the SINGLE-constraint grammar, not the set grammar, so
+	// that NewSpecifier(">=1,<2") is an error rather than a silent ">=1" with the
+	// rest dropped on the floor -- and so that a comma is rejected outright
+	// rather than inherited from the set grammar's deliberate trailing-comma
+	// leniency. See singleConstraintRegexp.
+	//
+	// specifierRegexp is unanchored (Specifiers scans with it), so a bare
+	// FindStringSubmatch would happily match a prefix; the anchored grammar is
+	// what makes the whole input have to be one specifier.
+	if !singleConstraintRegexp.MatchString(s) {
 		return Specifier{}, fmt.Errorf("improper specifier: %s", s)
 	}
+	// Belt and braces: the anchored grammar already guarantees one constraint, so
+	// this only fires if the grammar and the scanner ever disagree about where a
+	// constraint ends. Cheap, and the failure it would catch is a silent wrong
+	// parse rather than an error.
 	found := specifierRegexp.FindAllString(s, -1)
 	if len(found) != 1 {
 		return Specifier{}, fmt.Errorf("improper specifier: %s", s)

@@ -131,6 +131,21 @@ mistaken for a safe patch upgrade.
   `Equal` canonicalizes instead: `==2.8.0` equals `==2.8`, but `~=1.18.0` does **not**
   equal `~=1.18`, because trailing zeros change which versions `~=` accepts.
 
+  `NewSpecifier` rejects a **comma in any position** — `">=1,<2"`, `">=1,"`, `",>=1"`
+  and `","` are all errors — because a comma is set punctuation with no meaning inside
+  one specifier. Upstream agrees: `Specifier` raises `InvalidSpecifier` for every one of
+  those while the corresponding `SpecifierSet` calls all succeed.
+
+  ⚠️ It has its own **anchored single-constraint grammar** rather than borrowing the set
+  grammar. An earlier draft validated with the set grammar, which tolerates a trailing
+  comma deliberately, so `NewSpecifier(">=1,")` was accepted and silently yielded the
+  single specifier `>=1` — contradicting this constructor's own documented contract. The
+  strictness the doc comment promised was being delivered by accident, and only for the
+  comma positions the set grammar happened to reject. A singular constructor validating
+  with the plural grammar is a coupling that breaks silently whenever the plural grammar
+  moves; the two are now independent, with a test asserting the set constructor still
+  accepts the trailing comma the singular one rejects.
+
 - `PreReleases`, a three-state pre-release policy (`PreReleasesAuto`,
   `PreReleasesInclude`, `PreReleasesExclude`) with the `WithPreReleases` option, which
   works both as a `SpecifierOption` at construction and as a `FilterOption` overriding it

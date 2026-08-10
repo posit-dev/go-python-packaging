@@ -168,38 +168,97 @@ func TestNewSpecifiersFromPreservesMemberPolicies(t *testing.T) {
 	assert.Equal(t, PreReleasesExclude, ss.List()[1].PreReleases(), "member 1 keeps Exclude")
 }
 
-// FINDING 8. The zero-value Specifier constrains nothing, consistently.
+// FINDING 8. "Constrains nothing" must mean the same thing everywhere -- on the
+// MATCHING axis and on the SELECTION axis, which are separate.
 //
-// Before the fix the two readings disagreed on exactly one input class:
-// Contains("1.0") was true via Check's nil guard, while Contains("lolwat") was
-// false because the unparseable branch admits a non-version only for "===".
-// Meanwhile NewSpecifiers("").Contains("lolwat") is true. Three spellings of
-// "no constraint" have to agree.
-func TestZeroValueSpecifierConstrainsNothingConsistently(t *testing.T) {
-	var zero Specifier
-
-	items := []string{"1.0", "0", "2.0a1", "1!3.0", "1.0+local", "lolwat", "not a version", ""}
-
-	for _, item := range items {
-		assert.True(t, zero.Contains(item), "zero Specifier must admit %q", item)
-	}
-
-	// Filter keeps everything, in order.
-	assert.Equal(t, items, zero.Filter(items))
-
-	// And it agrees with the other two spellings of "no constraint".
+// The original defect was on the matching axis: Contains("1.0") was true via
+// Check's nil guard while Contains("lolwat") was false, because the unparseable
+// branch admitted a non-version only for "===".
+//
+// ⚠️ The first fix for that introduced a second defect on the SELECTION axis, by
+// short-circuiting on a nil operator function and returning before the
+// pre-release logic. That made a zero-value Specifier offer a pre-release even
+// when a final release was available, and made an explicit PreReleasesExclude
+// unable to exclude anything. Both axes are asserted below, because covering
+// only the first is what let that through.
+//
+// Note on what counts as a spelling of "no constraint": the zero-value
+// Specifier, the zero-value Specifiers, NewSpecifiers("") and a set holding a
+// zero-value member. A parsed bare version (`NewSpecifier("2.0")`) is NOT one of
+// them -- it is a real constraint equivalent to ==2.0, and
+// TestZeroValueShortcutDoesNotSwallowRealSpecifiers pins that separately.
+func TestConstrainsNothingAgreesOnBothAxes(t *testing.T) {
 	emptySet, err := NewSpecifiers("")
 	require.NoError(t, err)
-	zeroSet := Specifiers{}
-	for _, item := range items {
-		assert.Equal(t, emptySet.Contains(item), zero.Contains(item),
-			`zero Specifier and NewSpecifiers("") must agree on %q`, item)
-		assert.Equal(t, emptySet.Contains(item), zeroSet.Contains(item),
-			`zero Specifiers and NewSpecifiers("") must agree on %q`, item)
+
+	// The four spellings, as a common Filterer so one loop covers them all.
+	spellings := map[string]Filterer{
+		"zero Specifier":       Specifier{},
+		"zero Specifiers":      Specifiers{},
+		`NewSpecifiers("")`:    emptySet,
+		"set with zero member": NewSpecifiersFrom([]Specifier{{}}),
 	}
 
-	// Check already agreed and must keep agreeing.
-	assert.True(t, zero.Check(MustParse("1.0")))
+	t.Run("matching axis: every item is admitted", func(t *testing.T) {
+		items := []string{"1.0", "0", "1!3.0", "1.0+local", "lolwat", "not a version", ""}
+		for name, f := range spellings {
+			got := filterGeneric(f, items, func(s string) string { return s }, nil)
+			assert.Equal(t, items, got, "%s must admit every item", name)
+		}
+	})
+
+	t.Run("selection axis: a final release is preferred", func(t *testing.T) {
+		// A pre-release alongside a final must be held back -- the rule the
+		// short-circuit skipped.
+		items := []string{"1.0", "1.1a1"}
+		for name, f := range spellings {
+			got := filterGeneric(f, items, func(s string) string { return s }, nil)
+			assert.Equal(t, []string{"1.0"}, got,
+				"%s must hold back the pre-release when a final release is available", name)
+		}
+	})
+
+	t.Run("selection axis: a lone pre-release is offered", func(t *testing.T) {
+		items := []string{"1.1a1"}
+		for name, f := range spellings {
+			got := filterGeneric(f, items, func(s string) string { return s }, nil)
+			assert.Equal(t, items, got, "%s must offer a lone pre-release", name)
+		}
+	})
+
+	t.Run("selection axis: an explicit policy is honored", func(t *testing.T) {
+		items := []string{"1.0", "1.1a1"}
+		for name, f := range spellings {
+			excl := filterGeneric(f, items, func(s string) string { return s },
+				[]FilterOption{WithPreReleases(PreReleasesExclude)})
+			assert.Equal(t, []string{"1.0"}, excl,
+				"%s must honor PreReleasesExclude", name)
+
+			incl := filterGeneric(f, items, func(s string) string { return s },
+				[]FilterOption{WithPreReleases(PreReleasesInclude)})
+			assert.Equal(t, items, incl, "%s must honor PreReleasesInclude", name)
+
+			// And Exclude must be able to empty the result entirely.
+			lonePre := filterGeneric(f, []string{"1.1a1"}, func(s string) string { return s },
+				[]FilterOption{WithPreReleases(PreReleasesExclude)})
+			assert.Empty(t, lonePre, "%s: PreReleasesExclude must exclude a lone pre-release", name)
+		}
+	})
+
+	t.Run("Contains agrees across all four spellings", func(t *testing.T) {
+		items := []string{"1.0", "0", "2.0a1", "1!3.0", "1.0+local", "lolwat", "not a version", ""}
+		for _, item := range items {
+			want := emptySet.Contains(item)
+			for name, f := range spellings {
+				got := len(filterGeneric(f, []string{item}, func(s string) string { return s }, nil)) > 0
+				assert.Equal(t, want, got, "%s must agree on Contains(%q)", name, item)
+			}
+		}
+	})
+
+	// Check is the matching axis on its own, and must keep admitting everything.
+	assert.True(t, Specifier{}.Check(MustParse("1.0")))
+	assert.True(t, Specifier{}.Check(MustParse("1.1a1")))
 }
 
 // A REAL specifier must not be caught by the zero-value shortcut. The guard is

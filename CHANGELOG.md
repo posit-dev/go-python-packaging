@@ -138,10 +138,37 @@ mistaken for a safe patch upgrade.
   is `True` in `packaging` 26.2 while the set's is `False`. An earlier draft stamped the
   set's policy onto every member at parse time, so the two were indistinguishable.
 
-- The **zero-value `Specifier`** constrains nothing, consistently. Previously
-  `Specifier{}.Contains("1.0")` was true while `Specifier{}.Contains("lolwat")` was false,
-  even though `NewSpecifiers("").Contains("lolwat")` is true — three spellings of "no
-  constraint" disagreeing on one input class. All three now agree.
+- **"Constrains nothing" now means the same thing on both axes.** Four spellings — the
+  zero-value `Specifier`, the zero-value `Specifiers`, `NewSpecifiers("")`, and a set
+  holding a zero-value member — agree on matching *and* on pre-release selection.
+
+  Two defects were involved, and the second was introduced by the fix for the first:
+
+  1. **Matching axis.** `Specifier{}.Contains("1.0")` was true (via `Check`'s nil guard)
+     while `Specifier{}.Contains("lolwat")` was false, because the unparseable branch
+     admitted a non-version only for `===`. `NewSpecifiers("").Contains("lolwat")` is
+     true, so the spellings disagreed on one input class. Additionally
+     `NewSpecifiersFrom([]Specifier{{}}).Contains("lolwat")` was false, because
+     `allArbitraryMatch` re-tested `op == "==="` inline instead of sharing the predicate —
+     two spellings of the same test in two places, which is how they drifted. There is
+     now one, `admitsUnparseable`.
+
+  2. ⚠️ **Selection axis.** The first fix short-circuited on a nil operator function by
+     filling the result with `true` and returning **before** the pre-release logic. That
+     made `Specifier{}.Filter(["1.0", "1.1a1"])` offer the pre-release *even though a final
+     release was available*, and made `WithPreReleases(PreReleasesExclude)` silently
+     unable to exclude anything — an explicit caller override ignored.
+
+  The root cause of the second is worth stating because this change's history hit it three
+  separate times: **"constrains nothing" is a statement about MATCHING, not about
+  SELECTION.** The operator admitting every version says nothing about which of the
+  matching versions are then offered as candidates; that axis still has to run. A nil
+  operator function is now a flag consumed by the filter loop rather than an early return
+  that skips everything downstream.
+
+  A companion test asserts all four spellings agree on `Filter` output with a pre-release
+  present, with a lone pre-release, and under each explicit policy. The absence of exactly
+  that test is what let the second defect through.
 
 - **`~=` no longer panics on an operand that is entirely a post/dev suffix.**
   `specifierCompatible` derives its prefix by taking release components up to the first

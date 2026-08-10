@@ -463,24 +463,43 @@ func filterGeneric[T any](f Filterer, items []T, key func(T) string, opts []Filt
 // released if nothing was yielded directly — that is the "offer a pre-release
 // when there is nothing else" rule, and it is why Filter's answer for one
 // item can differ from its answer for that item alongside a final release.
+// admitsUnparseable reports whether this specifier can match an item that is not
+// a valid PEP 440 version.
+//
+// Two specifiers can: arbitrary equality spelled the same way, and one that
+// constrains nothing at all (a zero value, whose operator function is nil).
+// Everything else needs a version to compare against and therefore cannot match.
+//
+// ⚠️ This is the MATCHING axis only. It says the operator admits the item; it
+// says nothing about whether the item is then offered as a candidate. For an
+// unparseable string the two happen to coincide, because there is no version to
+// classify as a pre-release and so the selection rules have nothing to act on --
+// but that coincidence is confined to this one branch and must not be
+// generalized. See filterKeep.
+func (s Specifier) admitsUnparseable(item string) bool {
+	if s.fn == nil {
+		return true
+	}
+	return s.op == "===" && strings.EqualFold(item, s.operand)
+}
+
+// ⚠️ "Constrains nothing" is a statement about MATCHING, not about SELECTION.
+//
+// A zero-value Specifier has no operator function, so its operator admits every
+// version -- that is the matching axis, and Check's nil guard implements it. The
+// pre-release policy is a SEPARATE axis that still has to run: a set that
+// constrains nothing still prefers a final release over a pre-release, and still
+// honors an explicit PreReleasesExclude.
+//
+// An earlier version of this function short-circuited on `s.fn == nil` by
+// filling keep with true and returning BEFORE the policy logic below. That
+// conflated the two axes for the third time in this change's history: it made
+// `Specifier{}.Filter(["1.0", "1.1a1"])` offer the pre-release even though a
+// final release was available, and made `WithPreReleases(PreReleasesExclude)`
+// silently unable to exclude anything. The nil operator function is now a flag
+// consumed by the loop (see admitsUnparseable and Check), so both axes run.
 func (s Specifier) filterKeep(items []string, fc filterConf) []bool {
 	keep := make([]bool, len(items))
-
-	// A zero-value Specifier has no operator function and constrains nothing, so
-	// it offers everything -- including a string that is not a PEP 440 version.
-	//
-	// ⚠️ Without this, the two readings of "constrains nothing" disagreed on
-	// exactly one input class: Specifier{}.Contains("1.0") was true (Check's nil
-	// guard) while Specifier{}.Contains("lolwat") was false, because the
-	// unparseable branch below admits a non-version only for "===". Meanwhile
-	// NewSpecifiers("").Contains("lolwat") is true. Three spellings of the same
-	// idea have to give the same answer.
-	if s.fn == nil {
-		for i := range keep {
-			keep[i] = true
-		}
-		return keep
-	}
 
 	// A per-call policy wins over the one the specifier carries; otherwise the
 	// specifier's resolved policy decides.
@@ -504,11 +523,12 @@ func (s Specifier) filterKeep(items []string, fc filterConf) []bool {
 	for i, item := range items {
 		v, err := Parse(item)
 		if err != nil {
-			// Not a PEP 440 version. Only arbitrary equality can match it, and
-			// when it does it is offered unconditionally: there is no way to
-			// tell whether an opaque token is a pre-release, so the
-			// pre-release rules do not apply to it at all.
-			if s.op == "===" && strings.EqualFold(item, s.operand) {
+			// Not a PEP 440 version. Only arbitrary equality -- or a specifier
+			// that constrains nothing at all -- can match it, and when one does
+			// it is offered unconditionally: there is no way to tell whether an
+			// opaque token is a pre-release, so the pre-release rules have
+			// nothing to apply to.
+			if s.admitsUnparseable(item) {
 				keep[i] = true
 			}
 			continue
@@ -614,11 +634,21 @@ func groupMatches(group []Specifier, item string, v Version) bool {
 	return true
 }
 
+// allArbitraryMatch reports whether any AND-group admits an item that is not a
+// valid PEP 440 version, which needs EVERY member of that group to admit it.
+//
+// ⚠️ Uses the same admitsUnparseable predicate as Specifier.filterKeep, rather
+// than re-testing `op == "==="` inline. Testing the operator directly made a
+// zero-value member -- which constrains nothing and admits everything -- report
+// that it did NOT admit an unparseable string, so
+// `NewSpecifiersFrom([]Specifier{{}}).Contains("lolwat")` was false while the
+// bare `Specifier{}.Contains("lolwat")` was true. Two spellings of the same
+// predicate in two places is how they drifted; there is now one.
 func (ss Specifiers) allArbitraryMatch(item string) bool {
 	for _, group := range ss.specifiers {
 		all := len(group) > 0
 		for _, s := range group {
-			if s.op != "===" || !strings.EqualFold(item, s.operand) {
+			if !s.admitsUnparseable(item) {
 				all = false
 				break
 			}

@@ -118,14 +118,34 @@ func init() {
 type operatorFunc func(v Version, c string) bool
 
 type Specifiers struct {
-	specifiers [][]specifier
+	specifiers [][]Specifier
 	conf       conf
 }
 
-type specifier struct {
-	version  string
-	operator operatorFunc
+// Specifier is a single PEP 440 version specifier: one comparison operator
+// and one operand, such as `>=1.2.3` or `===lolwat`. It is the unit
+// pypa/packaging calls `Specifier`; the comma-separated set is Specifiers.
+//
+// The zero value is not a usable specifier. Build one with NewSpecifier, or
+// read them off a Specifiers with Specifiers.List.
+type Specifier struct {
+	// op is the comparison operator exactly as PEP 440 spells it ("==",
+	// "!=", "<", "<=", ">", ">=", "~=", "==="), or "" for the operator-less
+	// bare-version form this package deliberately admits (see the
+	// validConstraintRegexp comment in init).
+	op string
+	// operand is the right-hand side with surrounding whitespace removed and
+	// the sanitizer applied. It is NOT normalized as a version: upstream's
+	// Specifier.version returns the operand as written, so `==1.0A1` keeps
+	// its upper-case spelling. Verified against pypa/packaging 26.2.
+	operand string
+	// original is the specifier as matched in the input, whitespace and all.
 	original string
+	// fn is the matching function for op.
+	fn operatorFunc
+	// pre is the pre-release policy this specifier was built with, before
+	// autodetection. PreReleasesAuto means "not set"; PreReleases resolves it.
+	pre PreReleases
 }
 
 // NewSpecifiersWithSanitizer parses a given specifier and returns a new instance of Specifiers
@@ -154,30 +174,16 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		o.apply(c)
 	}
 
-	var sss [][]specifier
+	var sss [][]Specifier
 	for _, vv := range strings.Split(v, "||") {
 		if strings.TrimSpace(vv) == "*" {
 			vv = ">=0.0.0"
 		}
 		vv = strings.ReplaceAll(vv, "-", ".")
 
-		// Validate the segment
-		if !validConstraintRegexp.MatchString(vv) {
-			return Specifiers{}, fmt.Errorf("improper constraint: %s", vv)
-		}
-
-		ss := specifierRegexp.FindAllString(vv, -1)
-		if ss == nil {
-			ss = append(ss, strings.TrimSpace(vv))
-		}
-
-		var specs []specifier
-		for _, single := range ss {
-			s, err := newSpecifier(single, sanitizer)
-			if err != nil {
-				return Specifiers{}, err
-			}
-			specs = append(specs, s)
+		specs, err := parseGroup(vv, sanitizer, *c)
+		if err != nil {
+			return Specifiers{}, err
 		}
 		sss = append(sss, specs)
 	}
@@ -198,29 +204,15 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 		o.apply(c)
 	}
 
-	var sss [][]specifier
+	var sss [][]Specifier
 	for _, vv := range strings.Split(v, "||") {
 		if strings.TrimSpace(vv) == "*" {
 			vv = ">=0.0.0"
 		}
 
-		// Validate the segment
-		if !validConstraintRegexp.MatchString(vv) {
-			return Specifiers{}, fmt.Errorf("improper constraint: %s", vv)
-		}
-
-		ss := specifierRegexp.FindAllString(vv, -1)
-		if ss == nil {
-			ss = append(ss, strings.TrimSpace(vv))
-		}
-
-		var specs []specifier
-		for _, single := range ss {
-			s, err := newSpecifier(single, sanitizer)
-			if err != nil {
-				return Specifiers{}, err
-			}
-			specs = append(specs, s)
+		specs, err := parseGroup(vv, sanitizer, *c)
+		if err != nil {
+			return Specifiers{}, err
 		}
 		sss = append(sss, specs)
 	}
@@ -232,10 +224,69 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 
 }
 
-func newSpecifier(s string, sanitizer func(s string) string) (specifier, error) {
+// NewSpecifier parses a single PEP 440 version specifier, such as `>=1.2.3`.
+//
+// It is the singular counterpart to NewSpecifiers and mirrors upstream's
+// `Specifier(spec, prereleases=...)` constructor. A comma-separated set is not
+// a single specifier: pass those to NewSpecifiers instead.
+func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
+	c := new(conf)
+	for _, o := range opts {
+		o.apply(c)
+	}
+
+	// Reject anything the specifier grammar does not accept in full, so that
+	// NewSpecifier(">=1,<2") is an error rather than a silent ">=1" with the
+	// rest dropped on the floor. specifierRegexp is unanchored (Specifiers
+	// scans with it), so a bare FindStringSubmatch would happily match a
+	// prefix.
+	if !validConstraintRegexp.MatchString(s) {
+		return Specifier{}, fmt.Errorf("improper specifier: %s", s)
+	}
+	found := specifierRegexp.FindAllString(s, -1)
+	if len(found) != 1 {
+		return Specifier{}, fmt.Errorf("improper specifier: %s", s)
+	}
+
+	return newSpecifier(found[0], func(v string) string { return v }, *c)
+}
+
+// parseGroup parses one AND-group: a comma-separated run of specifiers.
+//
+// An empty group is legal and yields zero specifiers, which is how
+// `NewSpecifiers("")` becomes the universal set rather than an error. Upstream
+// reaches the same place from the other end, by dropping empty items after
+// splitting on the comma (`[s.strip() for s in specifiers.split(",") if
+// s.strip()]`), which is also why it accepts a leading or doubled comma.
+func parseGroup(vv string, sanitizer func(string) string, c conf) ([]Specifier, error) {
+	if !validConstraintRegexp.MatchString(vv) {
+		return nil, fmt.Errorf("improper constraint: %s", vv)
+	}
+
+	found := specifierRegexp.FindAllString(vv, -1)
+	if found == nil {
+		if strings.TrimSpace(vv) == "" {
+			// The universal set. Not an error, and NOT a floor of zero.
+			return nil, nil
+		}
+		found = append(found, strings.TrimSpace(vv))
+	}
+
+	specs := make([]Specifier, 0, len(found))
+	for _, single := range found {
+		s, err := newSpecifier(single, sanitizer, c)
+		if err != nil {
+			return nil, err
+		}
+		specs = append(specs, s)
+	}
+	return specs, nil
+}
+
+func newSpecifier(s string, sanitizer func(s string) string, c conf) (Specifier, error) {
 	m := specifierRegexp.FindStringSubmatch(s)
 	if m == nil {
-		return specifier{}, fmt.Errorf("improper specifier: %s", s)
+		return Specifier{}, fmt.Errorf("improper specifier: %s", s)
 	}
 
 	operator := m[specifierRegexp.SubexpIndex("operator")]
@@ -250,14 +301,16 @@ func newSpecifier(s string, sanitizer func(s string) string) (specifier, error) 
 
 	if operator != "===" {
 		if err := validate(operator, version); err != nil {
-			return specifier{}, err
+			return Specifier{}, err
 		}
 	}
 
-	return specifier{
-		version:  version,
-		operator: specifierOperators[operator],
+	return Specifier{
+		op:       operator,
+		operand:  version,
 		original: s,
+		fn:       specifierOperators[operator],
+		pre:      c.preReleases,
 	}, nil
 }
 
@@ -314,11 +367,10 @@ func validate(operator, version string) error {
 // Note that andCheck below already returns true for an empty AND-group, for the
 // same reason: a conjunction over no constraints is vacuously true. Zero
 // OR-groups is the same statement one level up, and the two must agree.
+// Check is pure MATCHING: it ignores the pre-release policy entirely and asks
+// only whether v satisfies the operators. Use Contains for the PEP 440
+// selection semantics, where the policy applies.
 func (ss Specifiers) Check(v Version) bool {
-	if ss.conf.includePreRelease {
-		v.preReleaseIncluded = true
-	}
-
 	if len(ss.specifiers) == 0 {
 		return true
 	}
@@ -332,15 +384,53 @@ func (ss Specifiers) Check(v Version) bool {
 	return false
 }
 
-func (s specifier) check(v Version) bool {
-	return s.operator(v, s.version)
+// Check reports whether v satisfies this single specifier's operator. Like
+// Specifiers.Check it is pure matching, with no pre-release selection.
+func (s Specifier) Check(v Version) bool {
+	if s.fn == nil {
+		// A zero-value Specifier constrains nothing, for the same reason an
+		// empty Specifiers admits every version.
+		return true
+	}
+	return s.fn(v, s.operand)
 }
 
-func (s specifier) String() string {
-	return s.original
+// Operator returns the comparison operator as PEP 440 spells it: "==", "!=",
+// "<", "<=", ">", ">=", "~=" or "===".
+//
+// It returns "" for the operator-less bare-version form, which PEP 440 does
+// not define and upstream rejects; this package admits it deliberately for the
+// R constraint path (see the validConstraintRegexp comment in init).
+func (s Specifier) Operator() string { return s.op }
+
+// Version returns the specifier's operand as written, with surrounding
+// whitespace removed: `Specifier("== 1.0A1").Version()` is "1.0A1", not
+// "1.0a1". Upstream does the same — the operand is normalized when it is
+// compared, not when it is stored.
+func (s Specifier) Version() string { return s.operand }
+
+// Original returns the specifier exactly as it appeared in the input,
+// whitespace included.
+func (s Specifier) Original() string { return s.original }
+
+// String returns the normalized form: the operator immediately followed by the
+// operand, with the whitespace PEP 440 permits between them removed. So
+// `NewSpecifier("< 2").String()` is "<2", matching upstream's `str()`.
+func (s Specifier) String() string {
+	return s.op + s.operand
 }
 
-// String returns the string format of the specifiers
+// String returns the string format of the specifiers.
+//
+// Each specifier is rendered normalized (see Specifier.String), so
+// `NewSpecifiers("< 2").String()` is "<2".
+//
+// ⚠️ Input order is preserved. Upstream's SpecifierSet.__str__ sorts its
+// members, so `SpecifierSet(">=1,<2")` renders as "<2,>=1"; this package
+// renders ">=1,<2". That divergence is deliberate and left in place: the
+// OR-of-ANDs shape this type carries for the R path (`a || b`) has no upstream
+// counterpart to sort within, and reordering would churn Requirement.String
+// for no conformance gain.
 func (ss Specifiers) String() string {
 	var ssStr []string
 	for _, orS := range ss.specifiers {
@@ -354,9 +444,31 @@ func (ss Specifiers) String() string {
 	return strings.Join(ssStr, "||")
 }
 
-func andCheck(v Version, specifiers []specifier) bool {
+// Len returns the number of specifiers in the set, matching upstream's
+// `len(SpecifierSet)`. For a set carrying more than one OR-group (the R-only
+// `||` syntax, which upstream has no equivalent for) it is the total across
+// every group.
+func (ss Specifiers) Len() int {
+	n := 0
+	for _, group := range ss.specifiers {
+		n += len(group)
+	}
+	return n
+}
+
+// List returns the individual specifiers, flattened across OR-groups in input
+// order. It is the iteration upstream gets from `iter(SpecifierSet)`.
+func (ss Specifiers) List() []Specifier {
+	out := make([]Specifier, 0, ss.Len())
+	for _, group := range ss.specifiers {
+		out = append(out, group...)
+	}
+	return out
+}
+
+func andCheck(v Version, specifiers []Specifier) bool {
 	for _, c := range specifiers {
-		if !c.check(v) {
+		if !c.Check(v) {
 			return false
 		}
 	}
@@ -415,6 +527,31 @@ func padVersion(left, right []string) ([]string, []string) {
 // Specifier functions
 //-------------------------------------------------------------------
 
+// parseOperand parses a matching operand, reporting failure instead of
+// panicking.
+//
+// The comparison functions below used to call MustParse at six sites. Every
+// one of them was, at the time, only reachable with an operand the specifier
+// grammar had already validated, so none could actually panic through the
+// public API — but "unreachable" was a property of the CALLERS, not of these
+// functions, and it stopped being true the moment a new caller appeared. The
+// exported Specifier type is exactly that new caller: it can be built inside
+// this package with any operand at all, and Filter drives these functions
+// directly. A panic on the matching path of a library that parses
+// remote-supplied requirement strings is not a landmine worth keeping for the
+// sake of two fewer lines.
+//
+// A failed parse means "this comparison cannot be made", which yields no
+// match. It cannot mean "match", because that would admit versions on the
+// strength of an operand nobody could interpret.
+func parseOperand(s string) (Version, bool) {
+	v, err := Parse(s)
+	if err != nil {
+		return Version{}, false
+	}
+	return v, true
+}
+
 func specifierCompatible(prospective Version, spec string) bool {
 	// Compatible releases have an equivalent combination of >= and ==. That is that ~=2.2 is equivalent to >=2.2,==2.*.
 	// This allows us to implement this in terms of the other specifiers instead of implementing it ourselves.
@@ -443,7 +580,11 @@ func specifierEqual(prospective Version, spec string) bool {
 	// We need special logic to handle prefix matching
 	if strings.HasSuffix(spec, ".*") {
 		// In the case of prefix matching we want to ignore local segment.
-		prospective = MustParse(prospective.Public())
+		public, ok := parseOperand(prospective.Public())
+		if !ok {
+			return false
+		}
+		prospective = public
 
 		// Split the spec out by dots, and pretend that there is an implicit
 		// dot in between a release segment and a pre-release segment.
@@ -464,9 +605,16 @@ func specifierEqual(prospective Version, spec string) bool {
 		return reflect.DeepEqual(paddedSpec, paddedProspective)
 	}
 
-	specVersion := MustParse(spec)
+	specVersion, ok := parseOperand(spec)
+	if !ok {
+		return false
+	}
 	if specVersion.local == "" {
-		prospective = MustParse(prospective.Public())
+		public, ok := parseOperand(prospective.Public())
+		if !ok {
+			return false
+		}
+		prospective = public
 	}
 
 	return specVersion.Equal(prospective)
@@ -478,7 +626,10 @@ func specifierNotEqual(prospective Version, spec string) bool {
 
 func specifierLessThan(prospective Version, spec string) bool {
 	// Convert our spec to a Version instance, since we'll want to work with it as a version.
-	s := MustParse(spec)
+	s, ok := parseOperand(spec)
+	if !ok {
+		return false
+	}
 
 	// Check to see if the prospective version is less than the spec version.
 	// If it's not we can short circuit and just return False now instead of doing extra unneeded work.
@@ -489,17 +640,38 @@ func specifierLessThan(prospective Version, spec string) bool {
 	// This special case is here so that, unless the specifier itself includes is a pre-release version,
 	// that we do not accept pre-release versions for the version mentioned in the specifier
 	// (e.g. <3.1 should not match 3.1.dev0, but should match 3.0.dev0).
+	//
+	// ⚠️ This guard is MATCHING, not candidate selection: no pre-release
+	// policy turns it off. `<3.1` does not contain `3.1.dev0` even with
+	// PreReleasesInclude, which is what pypa/packaging 26.2 does.
 	if !s.IsPreRelease() && prospective.IsPreRelease() {
-		if MustParse(prospective.BaseVersion()).Equal(MustParse(s.BaseVersion())) {
+		if sameBaseVersion(prospective, s) {
 			return false
 		}
 	}
 	return true
 }
 
+// sameBaseVersion reports whether two versions share a base version (release
+// segment and epoch, with pre/post/dev/local discarded).
+func sameBaseVersion(a, b Version) bool {
+	av, ok := parseOperand(a.BaseVersion())
+	if !ok {
+		return false
+	}
+	bv, ok := parseOperand(b.BaseVersion())
+	if !ok {
+		return false
+	}
+	return av.Equal(bv)
+}
+
 func specifierGreaterThan(prospective Version, spec string) bool {
 	// Convert our spec to a Version instance, since we'll want to work with it as a version.
-	s := MustParse(spec)
+	s, ok := parseOperand(spec)
+	if !ok {
+		return false
+	}
 
 	// Check to see if the prospective version is greater than the spec version.
 	// If it's not we can short circuit and just return False now instead of doing extra unneeded work.
@@ -510,8 +682,10 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 	// This special case is here so that, unless the specifier itself includes is a post-release version,
 	// that we do not accept post-release versions for the version mentioned in the specifier
 	// (e.g. >3.1 should not match 3.0.post0, but should match 3.2.post0).
+	//
+	// ⚠️ Matching, not candidate selection. See specifierLessThan.
 	if !s.IsPostRelease() && prospective.IsPostRelease() {
-		if MustParse(prospective.BaseVersion()).Equal(MustParse(s.BaseVersion())) {
+		if sameBaseVersion(prospective, s) {
 			return false
 		}
 	}
@@ -519,7 +693,7 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 	// Ensure that we do not allow a local version of the version mentioned
 	//  in the specifier, which is technically greater than, to match.
 	if prospective.local != "" {
-		if MustParse(prospective.BaseVersion()).Equal(MustParse(s.BaseVersion())) {
+		if sameBaseVersion(prospective, s) {
 			return false
 		}
 	}
@@ -531,13 +705,19 @@ func specifierArbitrary(prospective Version, spec string) bool {
 }
 
 func specifierLessThanEqual(prospective Version, spec string) bool {
-	p := MustParse(prospective.Public())
-	s := MustParse(spec)
+	p, pok := parseOperand(prospective.Public())
+	s, sok := parseOperand(spec)
+	if !pok || !sok {
+		return false
+	}
 	return p.LessThanOrEqual(s)
 }
 
 func specifierGreaterThanEqual(prospective Version, spec string) bool {
-	p := MustParse(prospective.Public())
-	s := MustParse(spec)
+	p, pok := parseOperand(prospective.Public())
+	s, sok := parseOperand(spec)
+	if !pok || !sok {
+		return false
+	}
 	return p.GreaterThanOrEqual(s)
 }

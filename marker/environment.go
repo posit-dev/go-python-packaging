@@ -34,6 +34,99 @@ type Environment struct {
 	ImplementationVersion        string // "3.11.4"
 }
 
+// ErrUnknownMarkerVariable is returned by Environment.With and
+// Environment.Lookup for a name that is not one of the 11 PEP 508 marker
+// variables.
+var ErrUnknownMarkerVariable = errors.New("unknown PEP 508 marker variable")
+
+// VariableNames returns the 11 PEP 508 marker variable names, in the order the
+// Environment fields declare them.
+func VariableNames() []string {
+	return []string{
+		"os_name",
+		"sys_platform",
+		"platform_machine",
+		"platform_python_implementation",
+		"platform_release",
+		"platform_system",
+		"platform_version",
+		"python_version",
+		"python_full_version",
+		"implementation_name",
+		"implementation_version",
+	}
+}
+
+// Lookup returns the value of a PEP 508 marker variable by its PEP 508 name
+// ("os_name", "python_version", ...), and ErrUnknownMarkerVariable for
+// anything else.
+func (env Environment) Lookup(name string) (string, error) {
+	if !isMarkerVariable(name) {
+		return "", fmt.Errorf("%w: %q", ErrUnknownMarkerVariable, name)
+	}
+	return envVarValue(name, env), nil
+}
+
+// With returns a copy of env with the named marker variables replaced. It is
+// the override seam a partial marker environment needs.
+//
+// # Why this exists rather than a bare struct literal
+//
+// pypa/packaging's `Marker.evaluate` takes a PARTIAL dict — `{"os_name":
+// "foo"}` — and falls back to the live interpreter's values for every key the
+// caller left out. Environment is a struct, so the equivalent-looking Go
+// literal `Environment{OsName: "foo"}` zero-fills the other ten fields
+// instead. That is not the same evaluation: `python_version` becomes "", so a
+// marker like `python_version >= "3.8"` silently flips its answer, and nothing
+// reports an error. Overriding onto an explicit base keeps the distinction
+// between "this variable is set to the empty string" and "this variable was
+// never mentioned".
+//
+// An unrecognized name is an error rather than a silent no-op, because a typo
+// in a variable name would otherwise produce an evaluation against the base
+// value and look like it worked.
+func (env Environment) With(overrides map[string]string) (Environment, error) {
+	out := env
+	for name, value := range overrides {
+		switch name {
+		case "os_name":
+			out.OsName = value
+		case "sys_platform":
+			out.SysPlatform = value
+		case "platform_machine":
+			out.PlatformMachine = value
+		case "platform_python_implementation":
+			out.PlatformPythonImplementation = value
+		case "platform_release":
+			out.PlatformRelease = value
+		case "platform_system":
+			out.PlatformSystem = value
+		case "platform_version":
+			out.PlatformVersion = value
+		case "python_version":
+			out.PythonVersion = value
+		case "python_full_version":
+			out.PythonFullVersion = value
+		case "implementation_name":
+			out.ImplementationName = value
+		case "implementation_version":
+			out.ImplementationVersion = value
+		default:
+			return Environment{}, fmt.Errorf("%w: %q", ErrUnknownMarkerVariable, name)
+		}
+	}
+	return out, nil
+}
+
+func isMarkerVariable(name string) bool {
+	for _, known := range VariableNames() {
+		if known == name {
+			return true
+		}
+	}
+	return false
+}
+
 // InterpreterIdentity carries the marker fields a tags.Target cannot derive:
 // the concrete interpreter identity and its full version.
 // tags.Target.Implementation is only "cp"|"py" - a wheel-compatibility

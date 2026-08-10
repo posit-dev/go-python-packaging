@@ -464,6 +464,21 @@ func TestNewRSpecifiers_UsesProvidedSanitizer(t *testing.T) {
 	assert.True(t, specs.Check(v))
 }
 
+// TestVersion_CheckWithPreRelease pins the corrected meaning of
+// WithPreRelease(true): it is a candidate-SELECTION policy and does not
+// suppress the operator-level pre-release guards.
+//
+// The {"2.0a1", "<2", true} case this table used to assert was a divergence.
+// Measured against pypa/packaging 26.2, `<2` does not contain `2.0a1` under
+// ANY pre-release policy:
+//
+//	Specifier("<2", prereleases=True).contains("2.0a1")  -> False
+//	Specifier("<2").contains("2.0a1")                    -> False
+//	Specifier("<2", prereleases=False).contains("2.0a1") -> False
+//
+// The old `true` came from WithPreRelease(true) setting a flag that made
+// Version.IsPreRelease report false, which disabled the guard in
+// specifierLessThan. See rstudio/package-manager#19383.
 func TestVersion_CheckWithPreRelease(t *testing.T) {
 	tests := []struct {
 		version string
@@ -471,7 +486,7 @@ func TestVersion_CheckWithPreRelease(t *testing.T) {
 		want    bool
 	}{
 		{"1.3.4", "< 2.0", true},
-		{"2.0a1", "<2", true},
+		{"2.0a1", "<2", false},
 		{"2.1a1", "<2", false},
 	}
 	for _, tt := range tests {

@@ -9,6 +9,126 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Breaking
+
+- `WithPreRelease(true)` no longer suppresses the operator-level pre-release guards.
+
+  It used to set a flag on the `Version` being tested that made
+  `Version.IsPreRelease()` report **false for a version that plainly is a pre-release**,
+  which disabled the guards inside `specifierLessThan` and `specifierGreaterThan`. The
+  observable effect was that `<2` matched `2.0.dev1`. Measured against
+  `pypa/packaging` 26.2, `Specifier("<2").contains("2.0.dev1")` is `False` with
+  `prereleases=True`, with `prereleases=False`, and with the default — the guard is not
+  a pre-release *policy* at all, it is part of what `<` means.
+
+  That flag conflated two different things. PEP 440's pre-release rule governs which
+  candidates an installer **offers**; the operator guards govern which versions a
+  specifier **matches**. A pre-release does satisfy `>=1.0` — verified against the
+  reference implementation — it is merely passed over while a final release is also
+  available. The flag has been removed, so `Version.IsPreRelease()` is now a property of
+  the version alone and nothing can override it.
+
+  One existing assertion pinned the old behavior (`TestVersion_CheckWithPreRelease`
+  asserted `2.0a1` satisfies `<2` under `WithPreRelease(true)`) and has been corrected.
+
+  `WithPreRelease` is now deprecated in favor of `WithPreReleases`. `WithPreRelease(true)`
+  maps to `PreReleasesInclude` and `WithPreRelease(false)` to `PreReleasesAuto` — `false`
+  never meant "exclude" here, it meant "no override".
+
+- `Specifiers.String()` now renders each specifier normalized instead of echoing the
+  input text. `NewSpecifiers("< 2").String()` was `"< 2"` and is now `"<2"`, matching
+  upstream's `str(SpecifierSet("< 2"))`.
+
+  `Requirement.String()` is unaffected: `internal/pep508`'s `normalizeSpecifierClause`
+  already strips that whitespace before the string reaches `version.NewSpecifiers`, so
+  the two levels previously disagreed and now agree. The `requirement/` conformance
+  suite passes unchanged.
+
+  ⚠️ Input **order** is still preserved, which upstream does not do — it sorts its
+  members, so `SpecifierSet(">=1,<2")` renders as `"<2,>=1"`. Left as a deliberate
+  divergence: the OR-of-ANDs shape this type carries for the R path (`a || b`) has no
+  upstream counterpart to sort within.
+
+### Added
+
+- `Specifier`, the exported **singular** specifier, with `Operator()`, `Version()`,
+  `Original()`, `String()`, `Check()`, `Contains()`, `ContainsVersion()`, `Filter()`,
+  `FilterVersions()`, `PreReleases()` and `Equal()`. Built with `NewSpecifier`, or read
+  off a set with `Specifiers.List()`. Previously only the *set* was public, exposing
+  just `Check` and `String`.
+
+  `Specifier.Version()` returns the operand **as written** rather than normalized
+  (`NewSpecifier(">=  v1.0  ").Version()` is `"v1.0"`), which is what upstream does.
+  `Equal` canonicalizes instead: `==2.8.0` equals `==2.8`, but `~=1.18.0` does **not**
+  equal `~=1.18`, because trailing zeros change which versions `~=` accepts.
+
+- `PreReleases`, a three-state pre-release policy (`PreReleasesAuto`,
+  `PreReleasesInclude`, `PreReleasesExclude`) with the `WithPreReleases` option, which
+  works both as a `SpecifierOption` at construction and as a `FilterOption` overriding it
+  for a single call. `PreReleasesAuto` is the zero value and derives the policy from the
+  specifier per PEP 440, which a bool cannot express.
+
+  ⚠️ The set-level and specifier-level derivations are deliberately asymmetric, as
+  upstream's are: `Specifier(">=1.0").PreReleases()` is `PreReleasesExclude` while
+  `NewSpecifiers(">=1.0").PreReleases()` is `PreReleasesAuto`. That is what lets a set
+  fall back to offering a pre-release when nothing else matched.
+
+- `Filter` / `Contains` on both types, implementing PEP 440 candidate **selection**:
+  pre-releases are held back while any final release matches, and offered when none
+  does. `Contains` is defined as "`Filter` of one item is non-empty", exactly as
+  upstream defines it, so the two cannot disagree.
+
+- A **string-operand** query path. `Contains` takes a raw `string`, so a non-PEP 440
+  operand is finally expressible: `NewSpecifier("===lolwat").Contains("lolwat")` is
+  true. This was previously impossible — `Check` takes a `version.Version` and
+  `version.Parse("lolwat")` fails, so there was no way to pass the value in.
+
+  `Contains` (string) and `ContainsVersion` (parsed) differ only for `===`, which
+  compares the caller's spelling: `===1.1` contains `Version("1.01")` but not the
+  *string* `"1.01"`. That distinction is upstream's and is now testable.
+
+- `FilterBy`, a generic free function providing upstream's `key=` parameter for
+  filtering a slice of arbitrary values by a version field. It is a function rather than
+  a method because Go methods cannot take type parameters.
+
+- `Specifiers.Len()`, `Specifiers.List()`, `Specifiers.Equal()`, `Specifiers.And()`,
+  `Specifiers.ContainsInstalled()` and `NewSpecifiersFrom()`.
+
+  `And` combines the two sets' pre-release policies rather than dropping them, and
+  returns `ErrPreReleaseConflict` when they contradict (one `Include`, one `Exclude`),
+  where upstream raises `ValueError`. Like upstream it keeps duplicates —
+  `len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0"))` is 2 in packaging 26.2 — while
+  `Equal` is blind to order and duplicates.
+
+- `marker.Environment.With(map[string]string)`, `Environment.Lookup(name)` and
+  `marker.VariableNames()`: the override seam a **partial** marker environment needs.
+
+  Upstream's `Marker.evaluate` takes a partial dict and keeps the live interpreter's
+  value for every key the caller left out. The naive Go translation is a struct literal,
+  which zero-fills instead — so `Environment{OsName: "foo"}` silently sets
+  `python_version` to `""` and **changes the answer** of any marker touching it, with no
+  error reported. `With` overrides onto an explicit base, preserving the distinction
+  between "set to the empty string" and "never mentioned". An unrecognized variable name
+  is an error rather than a silent no-op.
+
+### Fixed
+
+- `NewSpecifiers("")` is now the universal set instead of an error. Upstream treats
+  `SpecifierSet('')` as valid, of length zero, and containing every version. The 0.3.0
+  fix covered only the zero-value/no-groups arm; this is the empty-input arm that
+  survived it.
+
+- The six `MustParse` calls on the matching hot path (`version/specifier.go`) no longer
+  panic on an operand that is not a valid version; a comparison that cannot be made
+  yields no match.
+
+  ⚠️ Honest scope: these were **not** reachable through the public API before this
+  change, and are not now — every operand except `===` is validated at construction, and
+  `===` never reaches those functions. But "unreachable" was a property of the *callers*,
+  and the exported `Specifier` plus `Filter` are new callers that drive them with
+  whatever operand they hold. The regression test builds the shape directly and was
+  verified to panic without the fix.
+
 ## [0.4.0] - 2026-08-10
 
 ### Breaking

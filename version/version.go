@@ -54,15 +54,14 @@ const (
 
 // Version represents a single version.
 type Version struct {
-	epoch              part.BigInt
-	release            []part.BigInt
-	pre                letterNumber
-	post               letterNumber
-	dev                letterNumber
-	local              string
-	key                key
-	preReleaseIncluded bool
-	original           string
+	epoch    part.BigInt
+	release  []part.BigInt
+	pre      letterNumber
+	post     letterNumber
+	dev      letterNumber
+	local    string
+	key      key
+	original string
 }
 
 type key struct {
@@ -473,12 +472,33 @@ func (v Version) Public() string {
 	return strings.SplitN(v.String(), "+", 2)[0]
 }
 
-// IsPreRelease returns if it is a pre-release
+// IsPreRelease reports whether this is a pre-release: it has a pre-release
+// segment (a1, b2, rc3) or a dev segment.
+//
+// ⚠️ This is a property of the version, and nothing else may override it. A
+// pre-release policy (see PreReleases) decides whether a pre-release is
+// *offered* as a candidate; it does not make a pre-release stop being one. An
+// earlier version of this package let WithPreRelease(true) flip this method to
+// false, which silently disabled the operator-level guards in the comparison
+// functions below and made `<2` match `2.0.dev1` — a result pypa/packaging
+// 26.2 rejects under every pre-release policy.
 func (v Version) IsPreRelease() bool {
-	if v.preReleaseIncluded {
-		return false
-	}
 	return !v.pre.isNull() || !v.dev.isNull()
+}
+
+// trimmedRelease renders the version like String, but with trailing zero
+// components dropped from the release segment (always keeping at least one),
+// which is the canonical form upstream's canonicalize_version produces via
+// _TrimmedRelease. Used by Specifier equality.
+func (v Version) trimmedRelease() string {
+	trimmed := v
+	rel := v.release
+	i := len(rel)
+	for i > 1 && rel[i-1].Compare(part.Zero) == 0 {
+		i--
+	}
+	trimmed.release = rel[:i]
+	return trimmed.String()
 }
 
 // IsPostRelease returns if it is a post-release

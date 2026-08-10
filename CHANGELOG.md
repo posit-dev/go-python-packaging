@@ -9,6 +9,331 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Breaking
+
+- 🔴 **`v0.4.0` shipped a zero-padding bug that made `==X.*`, `!=X.*` and `~=` answer
+  wrongly, and a new epoch regression. If you are on `v0.4.0`, upgrade.**
+
+  Two defects, both fixed here. They are stated bluntly because a repository server
+  built on the broken code **serves versions pip excludes**.
+
+  **The padding bug.** `padVersion`'s two zero-padding loops were written
+  `for i := 0; i < len(a)-len(b); i++` while *appending to `b` inside the loop*, so the
+  bound was re-evaluated every iteration and shrank as the slice grew. They appended
+  **⌈d/2⌉ zeros for a gap of d segments**, not `d`. Traced for a gap of 3: `i=0`, `0<3`,
+  append (b now 3); `i=1`, `1<2`, append (b now 4); `i=2`, `2<1`, stop — two zeros where
+  three were needed.
+
+  | specifier | version | `v0.4.0` | `packaging` 26.2 |
+  |---|---|---|---|
+  | `==2.0.*` | `2` | true | True ✓ |
+  | `==2.0.0.*` | `2` | **false** | **True** ✗ |
+  | `!=7.0.0.*` | `7` | **true** | **False** ✗ |
+  | `~=2.0.0.0` | `2` | **false** | **True** ✗ |
+  | `==2.0.0.0.*` | `2` | **false** | **True** ✗ |
+
+  ⚠️ `!=7.0.0.*` matching `7` is the customer-visible one: a server **serves** a version
+  pip **excludes**. In PPM it is reachable from arbitrary client input on
+  `POST /__api__/repos/:id/filter/packages`.
+
+  ⚠️ **Why this survived a rewrite, a release, and a changelog claim.** `⌈1/2⌉ == 1`, so a
+  gap of **one** segment is padded correctly by accident — and every pre-existing
+  regression case in this area was a 1-segment gap. `v0.4.0`'s changelog asserted the
+  padding worked "as PEP 440 requires"; **that was true only for a 1-segment gap.** The
+  new table sweeps gaps of 1–4 in both directions.
+
+  **The epoch regression.** `versionSplit` did not prepend the epoch the way upstream's
+  `_version_split` does, so `"1!1.0"` split to `["1!1", "0"]`; the digit filter then
+  dropped `"1!1"` entirely, and the under-padding made the two sides coincidentally equal
+  — so **`==0.0.0.*` MATCHED `1!1.0`**. The retired `go-pep440-version` answered `false`
+  here and `packaging` 26.2 answers `False`, so this was a regression *introduced* by the
+  earlier `padVersion` change, not an inherited defect.
+
+  ⚠️ **This corrects a claim made in this changelog.** The entry below about `padVersion`
+  described "13 pairs where the old answer agreed with `packaging`" as *"a separate
+  pre-existing epoch divergence"*. **That framing was wrong**: they are neither separate
+  nor pre-existing. The old module was correct, the new one was wrong, and the proximate
+  cause was the very function the release claimed to have fixed. The corrected framing is
+  in that entry.
+
+  **Which fix is load-bearing, measured rather than assumed:** fixing the padding loop
+  *alone* takes the 82-row oracle from **30 divergences to 7**, and it removes every epoch
+  false-positive — so the under-padding, not the missing epoch prepend, was the proximate
+  cause of `==0.0.0.*` matching `1!1.0`. The remaining 7 need the epoch prepend and
+  suffix-aware padding. Both loops, the digit filter, and the split are now a direct port
+  of upstream's `_version_split` / `_numeric_prefix_len` / `_left_pad`, verified at **0 of
+  82**.
+
+  **Blast radius, measured against `v0.4.0` itself** over 28,528 distinct specifier tokens
+  from the production PyPI corpus plus real CRAN constraints (1,926 of them wildcard or
+  `~=`), across a 24-version panel:
+
+  - parse acceptance: **0 newly accepted, 0 newly rejected** — this is a matching fix;
+  - match results: **2 tokens change**, `==2.0.*` and `!=2.0.*`, both on the version
+    `2rc1`. `==2.0.*` now matches it and `!=2.0.*` no longer does, which is what
+    `packaging` 26.2 answers (`True` / `False`); `v0.4.0` had both backwards.
+
+  Instrument validated: 7 of 8 synthetic multi-segment controls appended to the corpus do
+  flip. (The 8th, `==1!1.0.0.*`, needs the version `1!1` which the panel does not carry;
+  it is covered directly by the oracle table.) The small real-world count reflects that
+  multi-segment-gap wildcards barely occur in real constraint data — **not** that the bug
+  was harmless, since it is reachable from arbitrary client input.
+
+- `WithPreRelease(true)` no longer suppresses the operator-level pre-release guards.
+
+  It used to set a flag on the `Version` being tested that made
+  `Version.IsPreRelease()` report **false for a version that plainly is a pre-release**,
+  which disabled the guards inside `specifierLessThan` and `specifierGreaterThan`. The
+  observable effect was that `<2` matched `2.0.dev1`. Measured against
+  `pypa/packaging` 26.2, `Specifier("<2").contains("2.0.dev1")` is `False` with
+  `prereleases=True`, with `prereleases=False`, and with the default — the guard is not
+  a pre-release *policy* at all, it is part of what `<` means.
+
+  That flag conflated two different things. PEP 440's pre-release rule governs which
+  candidates an installer **offers**; the operator guards govern which versions a
+  specifier **matches**. A pre-release does satisfy `>=1.0` — verified against the
+  reference implementation — it is merely passed over while a final release is also
+  available. The flag has been removed, so `Version.IsPreRelease()` is now a property of
+  the version alone and nothing can override it.
+
+  One existing assertion pinned the old behavior (`TestVersion_CheckWithPreRelease`
+  asserted `2.0a1` satisfies `<2` under `WithPreRelease(true)`) and has been corrected.
+
+  `WithPreRelease` is now deprecated in favor of `WithPreReleases`. `WithPreRelease(true)`
+  maps to `PreReleasesInclude` and `WithPreRelease(false)` to `PreReleasesAuto` — `false`
+  never meant "exclude" here, it meant "no override".
+
+- `Specifiers.String()` now renders each specifier normalized instead of echoing the
+  input text. `NewSpecifiers("< 2").String()` was `"< 2"` and is now `"<2"`, matching
+  upstream's `str(SpecifierSet("< 2"))`.
+
+  `Requirement.String()` is unaffected: `internal/pep508`'s `normalizeSpecifierClause`
+  already strips that whitespace before the string reaches `version.NewSpecifiers`, so
+  the two levels previously disagreed and now agree. The `requirement/` conformance
+  suite passes unchanged.
+
+  ⚠️ Input **order** is still preserved, which upstream does not do — it sorts its
+  members, so `SpecifierSet(">=1,<2")` renders as `"<2,>=1"`. Left as a deliberate
+  divergence: the OR-of-ANDs shape this type carries for the R path (`a || b`) has no
+  upstream counterpart to sort within.
+
+### Notes
+
+- **`~=1.0c1` and `~=1.0rc1` answer differently, and that is conformance, not a bug.**
+  PEP 440 calls `c` an alias for `rc`, so this looks wrong; `packaging` 26.2 does the same
+  thing, measured:
+
+  ```
+  SpecifierSet("~=1.0c1").contains("1.1")   -> False
+  SpecifierSet("~=1.0rc1").contains("1.1")  -> True
+  ```
+
+  The cause is a mismatch between two upstream tables: `_prefix_regex` includes `c` (so
+  `0c1` splits into `0` + `c1`) while `_is_not_suffix` does not (so the resulting `c1`
+  counts as release rather than suffix), making the derived prefix one component narrower.
+  `c` is the only alias in that gap — `alpha`/`beta` are caught incidentally because the
+  check is a prefix match, and `pre`/`preview`/`r`/`rev` never match `_prefix_regex`.
+
+  ⚠️ **Two candidate fixes were measured and both make conformance worse.** Adding `"c"`
+  to the suffix list moves `~=1.0c1` away from the reference. Normalizing the operand
+  through the parser before deriving the prefix — the structural fix, which
+  `specifierEqual` legitimately uses — turns **0 divergences into 6**, additionally
+  breaking `~=1.0.pre1`, `~=1.0.preview1`, `~=1.0.r1`, `~=1.0.rev1` and `~=1.0.c1`,
+  because upstream derives the prefix from the **raw** operand text.
+
+  A new **410-row sweep** covers every PEP 440 pre/post alias against every permitted
+  separator for `~=` and wildcard equality, measured against `packaging` 26.2: **0
+  divergences**. ⚠️ Upstream's own test suite does not exercise `c` under `~=`, so the
+  ported conformance tables cannot catch a change here — verified, they stay green under
+  the broken variant. This sweep is the only thing holding it, and `isNotSuffix` now
+  carries a "do not add c" note explaining why.
+
+### Added
+
+- `Specifier`, the exported **singular** specifier, with `Operator()`, `Version()`,
+  `Original()`, `String()`, `Check()`, `Contains()`, `ContainsVersion()`, `Filter()`,
+  `FilterVersions()`, `PreReleases()` and `Equal()`. Built with `NewSpecifier`, or read
+  off a set with `Specifiers.List()`. Previously only the *set* was public, exposing
+  just `Check` and `String`.
+
+  `Specifier.Version()` returns the operand **as written** rather than normalized
+  (`NewSpecifier(">=  v1.0  ").Version()` is `"v1.0"`), which is what upstream does.
+  `Equal` canonicalizes instead: `==2.8.0` equals `==2.8`, but `~=1.18.0` does **not**
+  equal `~=1.18`, because trailing zeros change which versions `~=` accepts.
+
+  `NewSpecifier` rejects a **comma in any position** — `">=1,<2"`, `">=1,"`, `",>=1"`
+  and `","` are all errors — because a comma is set punctuation with no meaning inside
+  one specifier. Upstream agrees: `Specifier` raises `InvalidSpecifier` for every one of
+  those while the corresponding `SpecifierSet` calls all succeed.
+
+  ⚠️ It has its own **anchored single-constraint grammar** rather than borrowing the set
+  grammar. An earlier draft validated with the set grammar, which tolerates a trailing
+  comma deliberately, so `NewSpecifier(">=1,")` was accepted and silently yielded the
+  single specifier `>=1` — contradicting this constructor's own documented contract. The
+  strictness the doc comment promised was being delivered by accident, and only for the
+  comma positions the set grammar happened to reject. A singular constructor validating
+  with the plural grammar is a coupling that breaks silently whenever the plural grammar
+  moves; the two are now independent, with a test asserting the set constructor still
+  accepts the trailing comma the singular one rejects.
+
+- `PreReleases`, a three-state pre-release policy (`PreReleasesAuto`,
+  `PreReleasesInclude`, `PreReleasesExclude`) with the `WithPreReleases` option, which
+  works both as a `SpecifierOption` at construction and as a `FilterOption` overriding it
+  for a single call. `PreReleasesAuto` is the zero value and derives the policy from the
+  specifier per PEP 440, which a bool cannot express.
+
+  ⚠️ The set-level and specifier-level derivations are deliberately asymmetric, as
+  upstream's are: `Specifier(">=1.0").PreReleases()` is `PreReleasesExclude` while
+  `NewSpecifiers(">=1.0").PreReleases()` is `PreReleasesAuto`. That is what lets a set
+  fall back to offering a pre-release when nothing else matched.
+
+- `Filter` / `Contains` on both types, implementing PEP 440 candidate **selection**:
+  pre-releases are held back while any final release matches, and offered when none
+  does. `Contains` is defined as "`Filter` of one item is non-empty", exactly as
+  upstream defines it, so the two cannot disagree.
+
+- A **string-operand** query path. `Contains` takes a raw `string`, so a non-PEP 440
+  operand is finally expressible: `NewSpecifier("===lolwat").Contains("lolwat")` is
+  true. This was previously impossible — `Check` takes a `version.Version` and
+  `version.Parse("lolwat")` fails, so there was no way to pass the value in.
+
+  `Contains` (string) and `ContainsVersion` (parsed) differ only for `===`, which
+  compares the caller's spelling: `===1.1` contains `Version("1.01")` but not the
+  *string* `"1.01"`. That distinction is upstream's and is now testable.
+
+- `FilterBy`, a generic free function providing upstream's `key=` parameter for
+  filtering a slice of arbitrary values by a version field. It is a function rather than
+  a method because Go methods cannot take type parameters.
+
+- `Specifiers.Len()`, `Specifiers.List()`, `Specifiers.Equal()`, `Specifiers.And()`,
+  `Specifiers.ContainsInstalled()` and `NewSpecifiersFrom()`.
+
+  `And` combines the two SETS' pre-release policies rather than dropping them, and
+  returns `ErrPreReleaseConflict` when they contradict (one `Include`, one `Exclude`),
+  where upstream raises `ValueError`. `Equal` is blind to order and duplicates.
+
+  `And` **deduplicates** its members: `NewSpecifiers(">=1.0").And(NewSpecifiers(">=1.0"))`
+  has `Len()` 1 and renders `">=1.0"`. Deduplication is canonical rather than textual, so
+  `">=1.0.0"` and `">=1"` also collapse, while `"~=1.18.0"` and `"~=1.18"` do not (their
+  trailing zero changes which versions they accept).
+
+  ⚠️ **A previous draft of this entry claimed `len(... & ...) == 2` as deliberate upstream
+  parity. That claim was wrong and has been removed.** It is true only of a *fresh*
+  upstream object: `packaging` 26.2 deduplicates lazily in `_canonical_specs()`, so
+  `len(c)` is 2, then `str(c)` is `">=1.0"`, and `len(c)` is then **1**. The 2 was a
+  transient pre-canonicalization artifact of upstream's caching — the very thing this
+  port declares non-portable — and it made the count depend on which method a caller
+  happened to invoke first. Matching was never affected either way, since a conjunction
+  is idempotent; this is purely about what `Len` and `String` report.
+
+  ⚠️ **Member pre-release policies are left alone.** `And` and `NewSpecifiersFrom` set
+  only the *set's* policy, matching upstream, whose `__and__` never touches a member's
+  `_prereleases`. An earlier draft re-stamped every member with the combined policy,
+  which could **erase** a member's explicit policy and then let autodetection reach the
+  opposite answer: a member built with `PreReleasesExclude` on the operand `>=1.0.dev1`
+  became `Auto`, autodetected `Include` off the `.dev1`, and flipped the whole set's
+  resolved policy — so the combined set offered a pre-release the original had held back.
+
+  ⚠️ **`And` and `Equal` respect this type's OR-of-ANDs shape**, which upstream has no
+  equivalent of (the `||` operator is this package's extension for the R constraint
+  path). `And` **distributes**: `(A||B) AND C` is `(A,C) || (B,C)`, not `A AND B AND C`.
+  `Equal` compares the set of canonicalized AND-groups, so `">=1||<2"` does **not** equal
+  `">=1,<2"` — they hold the same members but mean opposite things, the first admitting
+  every version and the second only their intersection. For a single-group set, which is
+  everything a Python-style comma-separated string produces, both reduce exactly to
+  upstream's behavior.
+
+  ⚠️ **`List()` is for iteration, not semantics.** It flattens across OR-groups, so it
+  cannot be used to decide what a set matches or whether two sets are the same. Its doc
+  comment says so. `Len()` likewise counts members across all groups.
+
+  A member read off a set via `List()` reports **its own** pre-release policy, not the
+  set's, matching upstream: `list(SpecifierSet(">=1.0.dev1", prereleases=False))[0].prereleases`
+  is `True` in `packaging` 26.2 while the set's is `False`. An earlier draft stamped the
+  set's policy onto every member at parse time, so the two were indistinguishable.
+
+- **"Constrains nothing" now means the same thing on both axes.** Four spellings — the
+  zero-value `Specifier`, the zero-value `Specifiers`, `NewSpecifiers("")`, and a set
+  holding a zero-value member — agree on matching *and* on pre-release selection.
+
+  Two defects were involved, and the second was introduced by the fix for the first:
+
+  1. **Matching axis.** `Specifier{}.Contains("1.0")` was true (via `Check`'s nil guard)
+     while `Specifier{}.Contains("lolwat")` was false, because the unparseable branch
+     admitted a non-version only for `===`. `NewSpecifiers("").Contains("lolwat")` is
+     true, so the spellings disagreed on one input class. Additionally
+     `NewSpecifiersFrom([]Specifier{{}}).Contains("lolwat")` was false, because
+     `allArbitraryMatch` re-tested `op == "==="` inline instead of sharing the predicate —
+     two spellings of the same test in two places, which is how they drifted. There is
+     now one, `admitsUnparseable`.
+
+  2. ⚠️ **Selection axis.** The first fix short-circuited on a nil operator function by
+     filling the result with `true` and returning **before** the pre-release logic. That
+     made `Specifier{}.Filter(["1.0", "1.1a1"])` offer the pre-release *even though a final
+     release was available*, and made `WithPreReleases(PreReleasesExclude)` silently
+     unable to exclude anything — an explicit caller override ignored.
+
+  The root cause of the second is worth stating because this change's history hit it three
+  separate times: **"constrains nothing" is a statement about MATCHING, not about
+  SELECTION.** The operator admitting every version says nothing about which of the
+  matching versions are then offered as candidates; that axis still has to run. A nil
+  operator function is now a flag consumed by the filter loop rather than an early return
+  that skips everything downstream.
+
+  A companion test asserts all four spellings agree on `Filter` output with a pre-release
+  present, with a lone pre-release, and under each explicit policy. The absence of exactly
+  that test is what let the second defect through.
+
+- **`~=` no longer panics on an operand that is entirely a post/dev suffix.**
+  `specifierCompatible` derives its prefix by taking release components up to the first
+  suffix and dropping the last one; an operand such as `dev1` or `post1` leaves nothing to
+  drop, and the slice was `[:-1]` — `slice bounds out of range`.
+
+  ⚠️ Not reachable through the public API (the grammar validates a `~=` operand), but it
+  was reachable from inside the package and therefore from any new caller, which is what
+  the exported `Specifier` and `Filter` are. Worth recording separately from the
+  `MustParse` hardening below because the *test* for that hardening did not cover it: its
+  operand list (`"lolwat"`, `""`, `"not a version"`, `"1.2.3.4.5-garbage"`) contains no
+  member that triggers this line, so it exercised every operator except the one that could
+  crash. The operand list now includes the suffix-only shapes.
+
+- `marker.Environment.With(map[string]string)`, `Environment.Lookup(name)` and
+  `marker.VariableNames()`: the override seam a **partial** marker environment needs.
+
+  Upstream's `Marker.evaluate` takes a partial dict and keeps the live interpreter's
+  value for every key the caller left out. The naive Go translation is a struct literal,
+  which zero-fills instead — so `Environment{OsName: "foo"}` silently sets
+  `python_version` to `""` and **changes the answer** of any marker touching it, with no
+  error reported. `With` overrides onto an explicit base, preserving the distinction
+  between "set to the empty string" and "never mentioned". An unrecognized variable name
+  is an error rather than a silent no-op.
+
+### Fixed
+
+- `NewSpecifiers("")` is now the universal set instead of an error. Upstream treats
+  `SpecifierSet('')` as valid, of length zero, and containing every version. The 0.3.0
+  fix covered only the zero-value/no-groups arm; this is the empty-input arm that
+  survived it.
+
+  ⚠️ **Only a wholly blank input is universal.** A blank `||` segment is an error:
+  `">=1||"`, `"||>=1"` and `">=1||||<2"` are rejected. Since `||` is an OR and an empty
+  AND-group matches everything, allowing one would mean a trailing-`||` typo *disabled*
+  the constraint rather than narrowing it — `">=1||"` would admit `0.1` — with nothing
+  erroring and nothing logged. Behavior is unchanged from 0.4.0, where such input was
+  also an error. Measured against real CRAN data for the R path: `||` does not occur at
+  all in 59,139 constraint occurrences, so nothing real is affected.
+
+- The six `MustParse` calls on the matching hot path (`version/specifier.go`) no longer
+  panic on an operand that is not a valid version; a comparison that cannot be made
+  yields no match.
+
+  ⚠️ Honest scope: these were **not** reachable through the public API before this
+  change, and are not now — every operand except `===` is validated at construction, and
+  `===` never reaches those functions. But "unreachable" was a property of the *callers*,
+  and the exported `Specifier` plus `Filter` are new callers that drive them with
+  whatever operand they hold. The regression test builds the shape directly and was
+  verified to panic without the fix.
+
 ## [0.4.0] - 2026-08-10
 
 ### Breaking

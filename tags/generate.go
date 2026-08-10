@@ -9,91 +9,148 @@ import (
 // generateTags builds the full ordered, most-preferred-first list of
 // compatible tags for a (validated) Target. The ordering follows the
 // pypa/packaging convention (packaging.tags.cpython_tags /
-// packaging.tags.compatible_tags), fixed to a specific declared target
-// rather than the running interpreter/host:
+// packaging.tags.generic_tags / packaging.tags.compatible_tags, composed the
+// way packaging.tags.sys_tags composes them), fixed to a specific declared
+// target rather than the running interpreter/host:
 //
 //   - "cp" targets: cp<XY>-cp<XY>-<plat> (exact ABI), then cp<XY>-abi3-<plat>,
 //     then cp<XY>-none-<plat>, then the abi3 walk down through older minor
 //     versions to cp32-abi3-<plat>; followed by the "compatible tier"
 //     py<XY>-none-<plat> down to py<X>0-none-<plat>; then cp<XY>-none-any;
-//     then the universal py*-none-any tail.
+//     then the universal py*-none-any tail. A free-threaded target substitutes
+//     cp<XY>t for the exact ABI and abi3t for abi3 throughout.
+//   - "pp" targets: pp<XY>-pypy<XY>_pp<IJ>-<plat> (the implementation ABI),
+//     then pp<XY>-none-<plat>; followed by the same compatible tier, whose
+//     "-none-any" entry is the MAJOR-only pp<X>-none-any, then the universal
+//     tail. There is no stable-ABI tier: abi3 is a CPython concept.
 //   - "py" targets: the same compatible tier and universal tail, without any
-//     interpreter-specific entries (there is no compiled ABI to bind to).
+//     interpreter-specific entries (there is no compiled ABI to bind to, and
+//     no implementation to name in a "-none-any" tag).
 func generateTags(t Target) ([]Tag, error) {
-	if t.Implementation == "cp" {
-		return cpTags(t)
-	}
-	return pyTags(t)
-}
-
-func cpTags(t Target) ([]Tag, error) {
 	plats, err := t.platformTags()
 	if err != nil {
 		return nil, err
 	}
+	switch t.Implementation {
+	case "cp":
+		return cpTags(t, plats), nil
+	case "pp":
+		return implTags(t, plats), nil
+	default:
+		return pyTags(t, plats), nil
+	}
+}
+
+// cpTags mirrors packaging.tags.cpython_tags followed by
+// compatible_tags(interpreter="cp<XY>").
+func cpTags(t Target, plats []string) []Tag {
 	interp := interpTag("cp", t.PyMajor, t.PyMinor)
 
 	var out []Tag
-	appendPlatform := func(abi string) {
+	appendPlatform := func(tagInterp, abi string) {
+		for _, p := range plats {
+			out = append(out, Tag{tagInterp, abi, p})
+		}
+	}
+
+	// Exact ABI: the free-threaded build's abiflags carry a "t"
+	// (cp313-cp313t-<plat>), which is what makes it a distinct ABI.
+	exactABI := interp
+	if t.FreeThreaded {
+		exactABI += "t"
+	}
+	appendPlatform(interp, exactABI)
+
+	// The stable ABI was introduced in Python 3.2 (PEP 384). A free-threaded
+	// build does not support it -- packaging's _abi3_applies is explicitly
+	// false when threading -- and takes PEP 803's abi3t in its place, both in
+	// this slot and in the descending walk below. The two are mutually
+	// exclusive, so there is a single stable-ABI name here rather than two
+	// tiers.
+	stableABI := ""
+	if t.PyMajor == 3 && t.PyMinor >= 2 {
+		if t.FreeThreaded {
+			stableABI = "abi3t"
+		} else {
+			stableABI = "abi3"
+		}
+	}
+	if stableABI != "" {
+		appendPlatform(interp, stableABI)
+	}
+
+	appendPlatform(interp, "none")
+
+	if stableABI != "" {
+		for minor := t.PyMinor - 1; minor >= 2; minor-- {
+			appendPlatform(interpTag("cp", t.PyMajor, minor), stableABI)
+		}
+	}
+
+	return append(out, compatibleTags(t, plats, interp)...)
+}
+
+// implTags mirrors packaging.tags.generic_tags followed by the compatible tier
+// packaging.tags.sys_tags pairs with it for a non-CPython interpreter, whose
+// "-none-any" interpreter is the major-only form ("pp3", not "pp310").
+func implTags(t Target, plats []string) []Tag {
+	interp := interpTag(t.Implementation, t.PyMajor, t.PyMinor)
+
+	var out []Tag
+	if abi := t.implABI(); abi != "" {
 		for _, p := range plats {
 			out = append(out, Tag{interp, abi, p})
 		}
 	}
-
-	// Exact ABI.
-	appendPlatform(interp)
-
-	// abi3 was introduced in Python 3.2; free-threaded ABIs are out of scope
-	// for now (see deferred-features follow-up).
-	useAbi3 := t.PyMajor == 3 && t.PyMinor >= 2
-	if useAbi3 {
-		appendPlatform("abi3")
+	// generic_tags appends "none" to the ABI list itself, so this tier is
+	// present even when the implementation's own version is unknown.
+	for _, p := range plats {
+		out = append(out, Tag{interp, "none", p})
 	}
 
-	appendPlatform("none")
-
-	if useAbi3 {
-		for minor := t.PyMinor - 1; minor >= 2; minor-- {
-			oldInterp := interpTag("cp", t.PyMajor, minor)
-			for _, p := range plats {
-				out = append(out, Tag{oldInterp, "abi3", p})
-			}
-		}
-	}
-
-	pyRange := pyInterpreterRange(t.PyMajor, t.PyMinor)
-	for _, v := range pyRange {
-		for _, p := range plats {
-			out = append(out, Tag{v, "none", p})
-		}
-	}
-
-	out = append(out, Tag{interp, "none", "any"})
-
-	for _, v := range pyRange {
-		out = append(out, Tag{v, "none", "any"})
-	}
-
-	return out, nil
+	majorInterp := t.Implementation + strconv.Itoa(t.PyMajor)
+	return append(out, compatibleTags(t, plats, majorInterp)...)
 }
 
-func pyTags(t Target) ([]Tag, error) {
-	plats, err := t.platformTags()
-	if err != nil {
-		return nil, err
+// implABI is the implementation-specific ABI tag naming both the Python
+// version and the implementation's own version. PyPy 7.3 for Python 3.10
+// spells it "pypy310_pp73" (packaging derives this from the interpreter's
+// EXT_SUFFIX, ".pypy310-pp73-<plat>.so", in _generic_abi). It is empty when
+// the implementation version is unknown, or for an implementation with no
+// such ABI spelling.
+func (t Target) implABI() string {
+	if t.Implementation != "pp" || (t.ImplMajor == 0 && t.ImplMinor == 0) {
+		return ""
 	}
+	return fmt.Sprintf("pypy%d%d_pp%d%d", t.PyMajor, t.PyMinor, t.ImplMajor, t.ImplMinor)
+}
+
+func pyTags(t Target, plats []string) []Tag {
+	// A bare "py" target names no implementation, so it gets no
+	// "<interp>-none-any" entry: packaging's sys_tags passes interpreter=None
+	// to compatible_tags for any interpreter it does not recognize.
+	return compatibleTags(t, plats, "")
+}
+
+// compatibleTags mirrors packaging.tags.compatible_tags: the py<XY>-none-<plat>
+// tier over every platform, then "<interp>-none-any" if an interpreter is
+// named, then the universal py<XY>-none-any tail.
+func compatibleTags(t Target, plats []string, interp string) []Tag {
 	pyRange := pyInterpreterRange(t.PyMajor, t.PyMinor)
 
-	var out []Tag
+	out := make([]Tag, 0, len(pyRange)*(len(plats)+1)+1)
 	for _, v := range pyRange {
 		for _, p := range plats {
 			out = append(out, Tag{v, "none", p})
 		}
 	}
+	if interp != "" {
+		out = append(out, Tag{interp, "none", "any"})
+	}
 	for _, v := range pyRange {
 		out = append(out, Tag{v, "none", "any"})
 	}
-	return out, nil
+	return out
 }
 
 // pyInterpreterRange mirrors packaging._py_interpreter_range: the exact
@@ -125,7 +182,7 @@ func (t Target) platformTags() ([]string, error) {
 	case "linux":
 		return linuxPlatformTags(t), nil
 	case "macos":
-		return macosPlatformTags(t.Arch, t.MacMajor), nil
+		return macosPlatformTags(t.Arch, t.MacMajor, t.MacMinor), nil
 	default:
 		// Unreachable: Target.validate rejects any other OS before
 		// generateTags is ever called.
@@ -272,24 +329,77 @@ var macosBinaryFormats = map[string][]string{
 	"arm64":  {"arm64", "universal2"},
 }
 
-// macosPlatformTags returns the ordered platform-tag list for a macOS
-// Target: "macosx_<M>_0_<fmt>" for every major version M from the target's
-// declared major version down to 11 (inclusive), newest first, each paired
-// with every binary format the architecture supports. Only macOS 11+ is
-// supported (Global Constraints: "macOS: 11+ only" -- pre-11's yearly
-// major-version-10 minor-bump numbering, and pypa/packaging's compatibility
-// tail of pre-11 "macosx_10_<n>_universal2" fallbacks, are both deferred).
-func macosPlatformTags(arch string, major int) []string {
+// macosFatBinaryFloorMinor is the oldest macOS 10.x minor version for which
+// x86_64 binary formats are defined at all: pypa/packaging's
+// _mac_binary_formats returns an empty format list for x86_64 below (10, 4),
+// so macosx_10_3 and older yield no tags whatsoever. (10.4 Tiger was the first
+// release with Intel support.)
+const macosFatBinaryFloorMinor = 4
+
+// macosCompatTailMinor is the highest macOS 10.x minor version an 11-or-later
+// target claims compatibility with. macOS 11 reports itself as "10.16" to
+// binaries built against an older SDK, so the pre-11 compatibility tail starts
+// there rather than at 10.15. Mirrors the range(16, 3, -1) in
+// pypa/packaging's mac_platforms.
+const macosCompatTailMinor = 16
+
+// macosBinaryFormatsFor is pypa/packaging's _mac_binary_formats restricted to
+// the archs this package supports: the format list an arch may claim at a
+// given macOS version, which for x86_64 is empty below 10.4.
+func macosBinaryFormatsFor(major, minor int, arch string) []string {
 	formats, ok := macosBinaryFormats[arch]
 	if !ok {
 		// Unreachable: Target.validate restricts macOS Arch to macosArchs,
 		// and every entry there has a macosBinaryFormats list.
 		panic("tags: no binary formats for macOS arch " + arch)
 	}
-	out := make([]string, 0, (major-11+1)*len(formats))
-	for m := major; m >= 11; m-- {
+	if arch == "x86_64" && major == 10 && minor < macosFatBinaryFloorMinor {
+		return nil
+	}
+	return formats
+}
+
+// macosPlatformTags returns the ordered platform-tag list for a macOS Target,
+// mirroring pypa/packaging's mac_platforms((major, minor), arch). macOS
+// changed its version scheme at 11, and so does the walk:
+//
+//   - A declared 10.x target walks the MINOR version down, "macosx_10_<m>_<fmt>"
+//     from the declared minor to 10.4 (below which no x86_64 format exists).
+//     There is no 11+ section and no compatibility tail: a macOS 10 host cannot
+//     run an 11+ binary.
+//   - A declared 11-or-later target walks the MAJOR version down,
+//     "macosx_<M>_0_<fmt>" from the declared major to 11, and then adds the
+//     pre-11 compatibility tail (macOS 11+ still runs older binaries):
+//     macosx_10_16 down to macosx_10_4. On x86_64 the tail carries the full
+//     format list; on any other arch only "universal2", since a
+//     single-architecture pre-11 binary cannot contain arm64 code, but the
+//     x86_64 half of a universal2 binary can declare a pre-11 minimum.
+//
+// Each version is paired with every binary format the architecture supports at
+// that version.
+func macosPlatformTags(arch string, major, minor int) []string {
+	var out []string
+	appendVersion := func(vMajor, vMinor int, formats []string) {
 		for _, f := range formats {
-			out = append(out, fmt.Sprintf("macosx_%d_0_%s", m, f))
+			out = append(out, fmt.Sprintf("macosx_%d_%d_%s", vMajor, vMinor, f))
+		}
+	}
+
+	if major == 10 {
+		for m := minor; m >= 0; m-- {
+			appendVersion(10, m, macosBinaryFormatsFor(10, m, arch))
+		}
+		return out
+	}
+
+	for m := major; m >= 11; m-- {
+		appendVersion(m, 0, macosBinaryFormatsFor(m, 0, arch))
+	}
+	for m := macosCompatTailMinor; m >= macosFatBinaryFloorMinor; m-- {
+		if arch == "x86_64" {
+			appendVersion(10, m, macosBinaryFormatsFor(10, m, arch))
+		} else {
+			appendVersion(10, m, []string{"universal2"})
 		}
 	}
 	return out

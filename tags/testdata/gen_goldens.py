@@ -90,11 +90,20 @@ def _linux_platform_list(arch, libc, libc_major, libc_minor):
     return platforms
 
 
-def write_linux(name, python_version, interpreter, arch, libc, libc_major, libc_minor):
+# The ABI and the compatible-tier interpreter are separate inputs: sys_tags
+# passes the abiflag-carrying ABI ("cp313t") to cpython_tags but the bare
+# "cp" + py_version_nodot ("cp313") to compatible_tags. They coincide for
+# ordinary GIL-enabled builds and diverge for free-threaded ones.
+def _cp_interp(python_version):
+    return f"cp{python_version[0]}{python_version[1]}"
+
+
+def write_linux(name, python_version, abi, arch, libc, libc_major, libc_minor):
     platforms = _linux_platform_list(arch, libc, libc_major, libc_minor)
+    interpreter = _cp_interp(python_version)
     write(
         name,
-        list(T.cpython_tags(python_version=python_version, abis=[interpreter], platforms=platforms))
+        list(T.cpython_tags(python_version=python_version, abis=[abi], platforms=platforms))
         + list(T.compatible_tags(python_version=python_version, interpreter=interpreter, platforms=platforms)),
     )
 
@@ -112,34 +121,107 @@ write_linux("cp39_glibc217_aarch64.json", (3, 9), "cp39", "aarch64", "glibc", 2,
 # tags at all (this target has no glibc).
 write_linux("cp312_musl12_x86_64.json", (3, 12), "cp312", "x86_64", "musl", 1, 2)
 
-# --- macOS targets: 11+ only ------------------------------------------------
+# --- macOS targets ----------------------------------------------------------
 #
-# packaging.tags.mac_platforms((major, 0), arch) is directly parameterized by
-# declared (major, minor) and arch -- no host-detection monkeypatching needed,
-# unlike linux. It also yields a legacy compatibility tail of pre-11
-# "macosx_10_<n>_<fmt>" tags (each yearly macOS release prior to 11 bumped
-# the minor version under major 10); per Global Constraints ("macOS: 11+
-# only ... Pre-11 deferred") we deliberately drop that tail here so the
-# golden fixture reflects our supported range, not packaging's full range.
-def _mac_platform_list(major, arch):
-    platforms = list(T.mac_platforms((major, 0), arch))
-    return [p for p in platforms if not p.startswith("macosx_10_")]
+# packaging.tags.mac_platforms((major, minor), arch) is directly parameterized
+# by declared (major, minor) and arch -- no host-detection monkeypatching
+# needed, unlike linux. Its output is passed through UNFILTERED: as of #18766
+# we generate the pre-11 range too, both the legacy "macosx_10_<n>" walk for a
+# declared 10.x target and the pre-11 compatibility tail an 11+ target carries
+# (each yearly macOS release prior to 11 bumped the minor version under major
+# 10, so 10.x is a minor-version walk while 11+ is a major-version walk).
+def _mac_platform_list(major, minor, arch):
+    return list(T.mac_platforms((major, minor), arch))
 
 
-def write_macos(name, python_version, interpreter, major, arch):
-    platforms = _mac_platform_list(major, arch)
+def write_macos(name, python_version, abi, major, arch, minor=0):
+    platforms = _mac_platform_list(major, minor, arch)
+    interpreter = _cp_interp(python_version)
     write(
         name,
-        list(T.cpython_tags(python_version=python_version, abis=[interpreter], platforms=platforms))
+        list(T.cpython_tags(python_version=python_version, abis=[abi], platforms=platforms))
         + list(T.compatible_tags(python_version=python_version, interpreter=interpreter, platforms=platforms)),
     )
 
 
-# cp310, macOS 12, arm64: format walk stops at macosx_12_0/macosx_11_0, each
-# with just [arm64, universal2] -- arm64 has no intel/fat* legacy formats.
+# cp310, macOS 12, arm64: major walk stops at macosx_12_0/macosx_11_0, each
+# with just [arm64, universal2] -- arm64 has no intel/fat* legacy formats --
+# then the pre-11 tail, which for a non-x86_64 arch is universal2 only
+# (macosx_10_16_universal2 .. macosx_10_4_universal2). Arm64 support arrived in
+# macOS 11, so there is no macosx_10_<n>_arm64.
 write_macos("cp310_macos12_arm64.json", (3, 10), "cp310", 12, "arm64")
 
 # cp312, macOS 14, x86_64: full x86_64 format list
 # ([x86_64, intel, fat64, fat32, universal2, universal]) at each of
-# macosx_14_0/13_0/12_0/11_0.
+# macosx_14_0/13_0/12_0/11_0, then the same full format list across the pre-11
+# tail macosx_10_16 .. macosx_10_4.
 write_macos("cp312_macos14_x86_64.json", (3, 12), "cp312", 14, "x86_64")
+
+# cp39, macOS 10.15 (Catalina), x86_64: a DECLARED pre-11 target. Walks the
+# minor version down (macosx_10_15 .. macosx_10_4) with the full x86_64 format
+# list; macosx_10_3 and below yield nothing at all, because
+# _mac_binary_formats returns [] for x86_64 below (10, 4). No 11+ major walk
+# and no compatibility tail -- both of those blocks are gated on
+# version >= (11, 0).
+write_macos("cp39_macos1015_x86_64.json", (3, 9), "cp39", 10, "x86_64", minor=15)
+
+# --- free-threaded CPython (PEP 703 / PEP 803) ------------------------------
+#
+# The free-threaded build's ABI carries a "t" in its abiflags: cp313t. The abi
+# is the only input that tells cpython_tags a target is free-threaded --
+# _is_threaded_cpython() re-reads it out of abis[0] -- so passing abis=["cp313t"]
+# explicitly is sufficient, with no monkeypatching of Py_GIL_DISABLED.
+#
+# The consequence measured here is NOT just an extra "t": free-threaded builds
+# do not support abi3 (_abi3_applies returns False when threading), and instead
+# get PEP 803's abi3t. So the stable-ABI slot and the whole descending
+# stable-ABI walk switch from abi3 to abi3t.
+write_linux("cp313t_glibc235_x86_64.json", (3, 13), "cp313t", "x86_64", "glibc", 2, 35)
+write_macos("cp314t_macos15_arm64.json", (3, 14), "cp314t", 15, "arm64")
+
+# --- PyPy / non-CPython implementation ABI ----------------------------------
+#
+# packaging routes non-CPython interpreters through generic_tags() rather than
+# cpython_tags(), then a compatible tier whose "<interp>-none-any" entry is the
+# MAJOR-only "pp3" (see sys_tags: interp = "pp3" for interp_name == "pp", not
+# "pp310"). generic_tags appends "none" to the ABI list itself.
+#
+# The ABI spelling comes from _generic_abi()'s EXT_SUFFIX parse: PyPy 7.3 for
+# Python 3.10 has EXT_SUFFIX ".pypy310-pp73-<plat>.so", giving abi
+# "pypy310_pp73" ("pypy" + python version nodot + "_pp" + pypy version nodot).
+def write_pypy(name, python_version, abis, platforms):
+    interp = f"pp{python_version[0]}{python_version[1]}"
+    write(
+        name,
+        list(T.generic_tags(interpreter=interp, abis=list(abis), platforms=platforms))
+        + list(
+            T.compatible_tags(
+                python_version=python_version,
+                interpreter=f"pp{python_version[0]}",
+                platforms=platforms,
+            )
+        ),
+    )
+
+
+write_pypy(
+    "pp310_pypy73_glibc228_x86_64.json",
+    (3, 10),
+    ["pypy310_pp73"],
+    _linux_platform_list("x86_64", "glibc", 2, 28),
+)
+write_pypy(
+    "pp311_pypy73_macos14_arm64.json",
+    (3, 11),
+    ["pypy311_pp73"],
+    _mac_platform_list(14, 0, "arm64"),
+)
+# A PyPy target whose PyPy-side version is unknown: generic_tags with an empty
+# ABI list still yields the "<interp>-none-<plat>" tier (it appends "none"
+# itself), just no implementation-specific ABI tag.
+write_pypy(
+    "pp310_noabi_windows_amd64.json",
+    (3, 10),
+    [],
+    ["win_amd64"],
+)

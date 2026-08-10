@@ -37,6 +37,37 @@ var goldenTargets = map[string]Target{
 		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "macos", Arch: "x86_64",
 		MacMajor: 14, MacMinor: 0,
 	},
+	// A declared pre-11 macOS target: the legacy major-10 minor-version walk.
+	"cp39_macos1015_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 9, OS: "macos", Arch: "x86_64",
+		MacMajor: 10, MacMinor: 15,
+	},
+	// Free-threaded (PEP 703) CPython: the cp<XY>t exact ABI, and PEP 803's
+	// abi3t in place of abi3 throughout.
+	"cp313t_glibc235_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 13, FreeThreaded: true,
+		OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 35,
+	},
+	"cp314t_macos15_arm64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 14, FreeThreaded: true,
+		OS: "macos", Arch: "arm64", MacMajor: 15, MacMinor: 0,
+	},
+	// PyPy: the implementation-specific "pypy<XY>_pp<IJ>" ABI, and the
+	// major-only "pp3-none-any" in the compatible tier.
+	"pp310_pypy73_glibc228_x86_64.json": {
+		Implementation: "pp", PyMajor: 3, PyMinor: 10, ImplMajor: 7, ImplMinor: 3,
+		OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28,
+	},
+	"pp311_pypy73_macos14_arm64.json": {
+		Implementation: "pp", PyMajor: 3, PyMinor: 11, ImplMajor: 7, ImplMinor: 3,
+		OS: "macos", Arch: "arm64", MacMajor: 14, MacMinor: 0,
+	},
+	// A PyPy target with an unknown PyPy-side version: no implementation ABI
+	// tier, but the pp<XY>-none-<plat> tier is still there.
+	"pp310_noabi_windows_amd64.json": {
+		Implementation: "pp", PyMajor: 3, PyMinor: 10,
+		OS: "windows", Arch: "amd64",
+	},
 }
 
 // TestGolden asserts that Target.Compile().Tags(), stringified in order,

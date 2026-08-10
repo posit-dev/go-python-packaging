@@ -135,9 +135,14 @@ type Specifier struct {
 	// validConstraintRegexp comment in init).
 	op string
 	// operand is the right-hand side with surrounding whitespace removed and
-	// the sanitizer applied. It is NOT normalized as a version: upstream's
-	// Specifier.version returns the operand as written, so `==1.0A1` keeps
-	// its upper-case spelling. Verified against pypa/packaging 26.2.
+	// the sanitizer applied. It is NOT normalized as a version: like upstream's
+	// Specifier.version it is the operand as written, so `>=  v1.0  ` keeps its
+	// "v" prefix.
+	//
+	// ⚠️ Upstream also preserves an upper-case spelling (`==1.0A1` keeps
+	// `1.0A1`), but this package cannot reach that case: validConstraintRegexp
+	// lacks the (?i) flag specifierRegexp has, so `==1.0A1` is rejected at
+	// parse time. Tracked in rstudio/package-manager#19391.
 	operand string
 	// original is the specifier as matched in the input, whitespace and all.
 	original string
@@ -189,7 +194,7 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		}
 		vv = strings.ReplaceAll(vv, "-", ".")
 
-		specs, err := parseGroup(vv, sanitizer, *c)
+		specs, err := parseGroup(vv, sanitizer)
 		if err != nil {
 			return Specifiers{}, err
 		}
@@ -226,7 +231,7 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 			vv = ">=0.0.0"
 		}
 
-		specs, err := parseGroup(vv, sanitizer, *c)
+		specs, err := parseGroup(vv, sanitizer)
 		if err != nil {
 			return Specifiers{}, err
 		}
@@ -341,7 +346,15 @@ func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
 // validConstraintRegexp, and that remaining divergence is tracked in
 // rstudio/package-manager#19391. Either way it is a question about members
 // within a group, never about whether the group itself may be empty.
-func parseGroup(vv string, sanitizer func(string) string, c conf) ([]Specifier, error) {
+// ⚠️ parseGroup deliberately takes no conf. The pre-release policy passed to
+// NewSpecifiers belongs to the SET, not to its members, and stamping it onto
+// each member conflates the two: upstream's SpecifierSet keeps its own
+// _prereleases and leaves every member's alone, so
+// `list(SpecifierSet(">=1.0.dev1", prereleases=False))[0].prereleases` is True
+// (the member's own autodetect) while the set's is False. Members are built
+// with the zero policy and autodetect individually; the set's policy is applied
+// at query time from ss.conf.
+func parseGroup(vv string, sanitizer func(string) string) ([]Specifier, error) {
 	if strings.TrimSpace(vv) == "" {
 		return nil, fmt.Errorf("improper constraint: empty constraint group")
 	}
@@ -356,7 +369,7 @@ func parseGroup(vv string, sanitizer func(string) string, c conf) ([]Specifier, 
 
 	specs := make([]Specifier, 0, len(found))
 	for _, single := range found {
-		s, err := newSpecifier(single, sanitizer, c)
+		s, err := newSpecifier(single, sanitizer, conf{})
 		if err != nil {
 			return nil, err
 		}
@@ -486,9 +499,14 @@ func (s Specifier) Check(v Version) bool {
 func (s Specifier) Operator() string { return s.op }
 
 // Version returns the specifier's operand as written, with surrounding
-// whitespace removed: `Specifier("== 1.0A1").Version()` is "1.0A1", not
-// "1.0a1". Upstream does the same — the operand is normalized when it is
-// compared, not when it is stored.
+// whitespace removed: `NewSpecifier(">=  v1.0  ").Version()` is "v1.0", not
+// "1.0". Like upstream, the operand is normalized when it is compared, not when
+// it is stored.
+//
+// ⚠️ Upstream demonstrates this with case as well (`Specifier("== 1.0A1").version`
+// is `1.0A1`). That example does not work here: `==1.0A1` is rejected at parse
+// time because validConstraintRegexp lacks the (?i) flag. See
+// rstudio/package-manager#19391.
 func (s Specifier) Version() string { return s.operand }
 
 // Original returns the specifier exactly as it appeared in the input,
@@ -654,6 +672,20 @@ func specifierCompatible(prospective Version, spec string) bool {
 			break
 		}
 		prefixElements = append(prefixElements, s)
+	}
+
+	// ⚠️ An operand whose FIRST dot-segment already starts with "post" or "dev"
+	// breaks the loop on iteration one, leaving prefixElements empty -- and
+	// slicing [:len-1] of an empty slice panics with "slice bounds out of range
+	// [:-1]". Reachable with the operand "dev1", "post1", "dev" or "post".
+	//
+	// This is the same landmine class as the MustParse sites, and note which
+	// operands DO NOT trigger it: "lolwat", "", "not a version" and "1.2.3.4.5-garbage"
+	// all pass through harmlessly, because they produce a non-empty first
+	// segment. A hardening test stocked only with those shapes therefore proves
+	// nothing about this line, which is exactly how it was missed.
+	if len(prefixElements) == 0 {
+		return false
 	}
 
 	// We want everything but the last item in the version, but we want to ignore post and dev releases, and

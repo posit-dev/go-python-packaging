@@ -141,16 +141,22 @@ func (s Specifier) FilterVersions(items []Version, opts ...FilterOption) []Versi
 
 // Equal reports whether two specifiers are equal after canonicalization,
 // matching upstream's Specifier.__eq__. The pre-release policy is ignored,
-// trailing zeros in the operand are not significant, and the operand's case
-// and `v` prefix are normalized:
+// trailing zeros in the operand are not significant, and a `v` prefix, a zero
+// epoch and local-segment case are normalized:
 //
 //	==2.8.0  ==  ==2.8      (true)
-//	==1.0A1  ==  ==1.0a1    (true)
+//	==v1.0   ==  ==1.0      (true)
+//	==0!1.0  ==  ==1.0      (true)
 //	~=1.18.0 ==  ~=1.18     (FALSE — `~=` keeps trailing zeros, because they
 //	                         change which versions it matches)
 //
 // A `===` operand and a `.*` wildcard are compared verbatim, since neither is
 // a version that can be canonicalized.
+//
+// ⚠️ Canonicalization would also make `==1.0A1` equal `==1.0a1`, as it does
+// upstream, but neither `==1.0A1` nor `==1.0+ABC` can be built here at all:
+// validConstraintRegexp lacks the (?i) flag, so both are rejected at parse
+// time. See rstudio/package-manager#19391.
 func (s Specifier) Equal(other Specifier) bool {
 	lop, lv := s.canonicalSpec()
 	rop, rv := other.canonicalSpec()
@@ -302,10 +308,19 @@ func (ss Specifiers) orGroups() [][]Specifier {
 // collapses to the single concatenated group upstream produces, duplicates
 // included.
 //
-// The pre-release policies are combined rather than dropped. PreReleasesAuto
-// on one side yields to the other; two identical explicit policies survive;
-// Include on one side and Exclude on the other is a contradiction and returns
-// ErrPreReleaseConflict, as upstream raises ValueError.
+// The pre-release policies of the two SETS are combined rather than dropped.
+// PreReleasesAuto on one side yields to the other; two identical explicit
+// policies survive; Include on one side and Exclude on the other is a
+// contradiction and returns ErrPreReleaseConflict, as upstream raises
+// ValueError.
+//
+// ⚠️ Member policies are left alone, as upstream's `__and__` leaves them. An
+// earlier version re-stamped every member with the combined policy, which could
+// ERASE a member's explicit policy and then let autodetection reach the opposite
+// answer: a member built with PreReleasesExclude on the operand `>=1.0.dev1`
+// became Auto, autodetected to Include off the `.dev1`, and flipped the whole
+// set's resolved policy from Auto to Include -- so the combined set offered a
+// pre-release the original had held back. A member's policy is the member's.
 func (ss Specifiers) And(other Specifiers) (Specifiers, error) {
 	pre, err := combinePreReleases(ss.conf.preReleases, other.conf.preReleases)
 	if err != nil {
@@ -318,17 +333,7 @@ func (ss Specifiers) And(other Specifiers) (Specifiers, error) {
 	groups := make([][]Specifier, 0, len(left)*len(right))
 	for _, l := range left {
 		for _, r := range right {
-			group := make([]Specifier, 0, len(l)+len(r))
-			group = append(group, l...)
-			group = append(group, r...)
-			// Re-stamp each member with the combined policy so a specifier read
-			// back off the result answers PreReleases consistently with the
-			// set. The append above copied the values, so this cannot reach
-			// back into either operand.
-			for i := range group {
-				group[i].pre = pre
-			}
-			groups = append(groups, group)
+			groups = append(groups, dedupeSpecifiers(l, r))
 		}
 	}
 
@@ -336,6 +341,47 @@ func (ss Specifiers) And(other Specifiers) (Specifiers, error) {
 		specifiers: groups,
 		conf:       conf{preReleases: pre},
 	}, nil
+}
+
+// dedupeSpecifiers concatenates AND-groups, dropping any member whose canonical
+// form has already been seen. First-occurrence order is preserved (this package
+// does not sort; see Specifiers.String).
+//
+// ⚠️ Deduplicating is a divergence from a LITERAL reading of upstream, and
+// agreement with the settled one.
+//
+// `len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0"))` really is 2 in packaging
+// 26.2 -- but only on a fresh object. Ask for `str()` first and it is 1, and
+// asking for `len()` again after `str()` also gives 1, because
+// `_canonical_specs()` deduplicates LAZILY and every canonicalizing operation
+// triggers it. So 2 is a transient pre-canonicalization artifact of upstream's
+// caching, not its answer; `str()` is `">=1.0"` under every ordering. An earlier
+// version of this package cited that 2 as deliberate upstream parity, which was
+// wrong twice over: it anchored a compatibility claim on the one thing this port
+// explicitly declares non-portable (lazy caches), and it made the count depend
+// on which method a caller happened to call first.
+//
+// Matching is unaffected either way, because a conjunction is idempotent -- this
+// is purely about what Len and String report.
+func dedupeSpecifiers(groups ...[]Specifier) []Specifier {
+	size := 0
+	for _, g := range groups {
+		size += len(g)
+	}
+	out := make([]Specifier, 0, size)
+	seen := make(map[string]struct{}, size)
+	for _, g := range groups {
+		for _, s := range g {
+			op, operand := s.canonicalSpec()
+			key := op + operand
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func combinePreReleases(left, right PreReleases) (PreReleases, error) {
@@ -352,6 +398,12 @@ func combinePreReleases(left, right PreReleases) (PreReleases, error) {
 // NewSpecifiersFrom builds a set from already-parsed specifiers, which is
 // upstream's `SpecifierSet(iterable_of_Specifier)`. The members are used as
 // given; no re-parsing happens.
+//
+// ⚠️ A policy passed here applies to the SET and does not overwrite the members'
+// own, matching upstream: `SpecifierSet(iterable, prereleases=X)` sets its own
+// `_prereleases` and leaves each member's alone. An earlier version stamped it
+// onto every member, which discarded exactly the per-member policy this
+// constructor exists to carry through.
 func NewSpecifiersFrom(specs []Specifier, opts ...SpecifierOption) Specifiers {
 	c := new(conf)
 	for _, o := range opts {
@@ -359,11 +411,6 @@ func NewSpecifiersFrom(specs []Specifier, opts ...SpecifierOption) Specifiers {
 	}
 	group := make([]Specifier, len(specs))
 	copy(group, specs)
-	if c.preReleases != PreReleasesAuto {
-		for i := range group {
-			group[i].pre = c.preReleases
-		}
-	}
 	return Specifiers{specifiers: [][]Specifier{group}, conf: *c}
 }
 
@@ -418,6 +465,22 @@ func filterGeneric[T any](f Filterer, items []T, key func(T) string, opts []Filt
 // item can differ from its answer for that item alongside a final release.
 func (s Specifier) filterKeep(items []string, fc filterConf) []bool {
 	keep := make([]bool, len(items))
+
+	// A zero-value Specifier has no operator function and constrains nothing, so
+	// it offers everything -- including a string that is not a PEP 440 version.
+	//
+	// ⚠️ Without this, the two readings of "constrains nothing" disagreed on
+	// exactly one input class: Specifier{}.Contains("1.0") was true (Check's nil
+	// guard) while Specifier{}.Contains("lolwat") was false, because the
+	// unparseable branch below admits a non-version only for "===". Meanwhile
+	// NewSpecifiers("").Contains("lolwat") is true. Three spellings of the same
+	// idea have to give the same answer.
+	if s.fn == nil {
+		for i := range keep {
+			keep[i] = true
+		}
+		return keep
+	}
 
 	// A per-call policy wins over the one the specifier carries; otherwise the
 	// specifier's resolved policy decides.

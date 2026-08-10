@@ -86,6 +86,16 @@ func TestCommaRequirementDoesNotNarrowValidForms(t *testing.T) {
 		{"!=3.2-2, >3.0.0", "PPM's R multi-constraint test shape"},
 		{"> 2.0.0, < 3.0.0, != 2.4.2", "three comma-separated constraints"},
 		{">= 1.0,", "trailing comma, which upstream also accepts"},
+		// Upstream drops every blank comma-split item, not just a trailing one:
+		// `[s.strip() for s in specifiers.split(",") if s.strip()]` in
+		// SpecifierSet.__init__ (pypa/packaging @ 4eb0753, release 26.2).
+		// Verified: SpecifierSet(",>=1") and SpecifierSet(">=1,,<2") both parse,
+		// to lengths 1 and 2.
+		{",>= 1.0", "leading comma, which upstream also accepts"},
+		{",,>= 1.0", "doubled leading comma"},
+		{">= 1.0,, < 2.0", "doubled comma between constraints"},
+		{">= 1.0 , , < 2.0", "doubled comma with surrounding spaces"},
+		{",", "comma-only input: the universal set, as SpecifierSet(\",\") is"},
 		{"*", "the any-version shorthand"},
 		{"===lolwat", "arbitrary equality takes an opaque operand"},
 		{">=1.0 , <2.0", "spaces around the comma"},

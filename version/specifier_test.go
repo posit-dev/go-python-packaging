@@ -423,22 +423,84 @@ func TestVersion_Check(t *testing.T) {
 	}
 }
 
-// TestPadVersion_RightRestDerivesFromRight is a regression test for a bug where
-// padVersion sliced left twice instead of slicing right for the "rest" of the
-// right-hand version, so the returned right-hand segments were built from
-// leftover pieces of the left-hand version instead of the right-hand version.
-func TestPadVersion_RightRestDerivesFromRight(t *testing.T) {
-	// left's release segment ("2","0") is longer than right's ("3"), and each
-	// side has a distinct, differently-shaped non-numeric "rest" suffix, so a
-	// padVersion that mixes up which side the rest comes from is easy to spot.
-	left := []string{"2", "0", "rc1"}
-	right := []string{"3", "x"}
+// TestLeftPad_InsertsPaddingBeforeTheSuffix replaces the old
+// TestPadVersion_RightRestDerivesFromRight.
+//
+// padVersion is gone: it padded the two sides against EACH OTHER and
+// reassembled numeric prefix plus "rest" for both, and the bug it guarded
+// against was slicing the left-hand side twice so the right-hand "rest" came
+// from the wrong version. leftPad pads ONE side up to a target numeric width,
+// with a single slice of a single input, so that class of mix-up is structurally
+// impossible.
+//
+// What still has to hold, and is the substance of the old test, is that the "0"
+// padding goes AFTER the numeric prefix and BEFORE any suffix segment, and that
+// the suffix survives intact.
+func TestLeftPad_InsertsPaddingBeforeTheSuffix(t *testing.T) {
+	tests := []struct {
+		name   string
+		split  []string
+		target int
+		want   []string
+	}{
+		{
+			// Ported from pypa/packaging 26.2's _left_pad docstring.
+			name:   "upstream docstring example",
+			split:  []string{"0", "1", "a1"},
+			target: 4,
+			want:   []string{"0", "1", "0", "0", "a1"},
+		},
+		{
+			name:   "suffix is preserved, not overwritten",
+			split:  []string{"0", "2", "rc1"},
+			target: 3,
+			want:   []string{"0", "2", "0", "rc1"},
+		},
+		{
+			name:   "already wide enough is returned unchanged",
+			split:  []string{"0", "1", "2", "3"},
+			target: 3,
+			want:   []string{"0", "1", "2", "3"},
+		},
+		{
+			name:   "no suffix",
+			split:  []string{"0", "2"},
+			target: 4,
+			want:   []string{"0", "2", "0", "0"},
+		},
+	}
 
-	_, gotRight := padVersion(left, right)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, leftPad(tt.split, tt.target))
+		})
+	}
+}
 
-	// The right-hand rest must come from right (["x"]), not left (["rc1"]).
-	want := []string{"3", "0", "x"}
-	assert.Equal(t, want, gotRight)
+// versionSplit must peel the epoch off as its own leading component, and must
+// treat a release-plus-pre-release run in one dot-segment as two components.
+// Both were missing before, and both are why `==0!2.*` did not match `2`.
+func TestVersionSplit_EpochAndPreRelease(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"2", []string{"0", "2"}},
+		{"0!2", []string{"0", "2"}},
+		{"2!1.0", []string{"2", "1", "0"}},
+		{"2rc1", []string{"0", "2", "rc1"}},
+		// The pre-release run is split out of its own dot-segment, so "0a1"
+		// becomes two components. Verified against pypa/packaging 26.2's
+		// _version_split.
+		{"1.0a1", []string{"0", "1", "0", "a1"}},
+		{"1.0.post1", []string{"0", "1", "0", "post1"}},
+		{"2.0.0", []string{"0", "2", "0", "0"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			assert.Equal(t, tt.want, versionSplit(tt.in))
+		})
+	}
 }
 
 // TestNewRSpecifiers_UsesProvidedSanitizer is a regression test for a bug where
@@ -464,6 +526,21 @@ func TestNewRSpecifiers_UsesProvidedSanitizer(t *testing.T) {
 	assert.True(t, specs.Check(v))
 }
 
+// TestVersion_CheckWithPreRelease pins the corrected meaning of
+// WithPreRelease(true): it is a candidate-SELECTION policy and does not
+// suppress the operator-level pre-release guards.
+//
+// The {"2.0a1", "<2", true} case this table used to assert was a divergence.
+// Measured against pypa/packaging 26.2, `<2` does not contain `2.0a1` under
+// ANY pre-release policy:
+//
+//	Specifier("<2", prereleases=True).contains("2.0a1")  -> False
+//	Specifier("<2").contains("2.0a1")                    -> False
+//	Specifier("<2", prereleases=False).contains("2.0a1") -> False
+//
+// The old `true` came from WithPreRelease(true) setting a flag that made
+// Version.IsPreRelease report false, which disabled the guard in
+// specifierLessThan. See rstudio/package-manager#19383.
 func TestVersion_CheckWithPreRelease(t *testing.T) {
 	tests := []struct {
 		version string
@@ -471,7 +548,7 @@ func TestVersion_CheckWithPreRelease(t *testing.T) {
 		want    bool
 	}{
 		{"1.3.4", "< 2.0", true},
-		{"2.0a1", "<2", true},
+		{"2.0a1", "<2", false},
 		{"2.1a1", "<2", false},
 	}
 	for _, tt := range tests {

@@ -54,15 +54,14 @@ const (
 
 // Version represents a single version.
 type Version struct {
-	epoch              part.BigInt
-	release            []part.BigInt
-	pre                letterNumber
-	post               letterNumber
-	dev                letterNumber
-	local              string
-	key                key
-	preReleaseIncluded bool
-	original           string
+	epoch    part.BigInt
+	release  []part.BigInt
+	pre      letterNumber
+	post     letterNumber
+	dev      letterNumber
+	local    string
+	key      key
+	original string
 }
 
 type key struct {
@@ -473,12 +472,82 @@ func (v Version) Public() string {
 	return strings.SplitN(v.String(), "+", 2)[0]
 }
 
-// IsPreRelease returns if it is a pre-release
+// IsPreRelease reports whether this is a pre-release: it has a pre-release
+// segment (a1, b2, rc3) or a dev segment.
+//
+// ⚠️ This is a property of the version, and nothing else may override it. A
+// pre-release policy (see PreReleases) decides whether a pre-release is
+// *offered* as a candidate; it does not make a pre-release stop being one. An
+// earlier version of this package let WithPreRelease(true) flip this method to
+// false, which silently disabled the operator-level guards in the comparison
+// functions below and made `<2` match `2.0.dev1` — a result pypa/packaging
+// 26.2 rejects under every pre-release policy.
 func (v Version) IsPreRelease() bool {
-	if v.preReleaseIncluded {
-		return false
-	}
 	return !v.pre.isNull() || !v.dev.isNull()
+}
+
+// postBase returns the version this one is a post-release of: the same version
+// with its post, dev and local segments dropped. Ported from pypa/packaging
+// 26.2's _post_base.
+//
+//	1.0.post1       -> 1.0
+//	1.0a1.post0     -> 1.0a1
+//	1.0.post0.dev1  -> 1.0
+//
+// It is derived by re-parsing the rendered prefix rather than by editing the
+// struct, because the comparison key is precomputed at Parse time and a
+// hand-edited copy would carry a key describing the version it used to be.
+func (v Version) postBase() (Version, bool) {
+	var buf bytes.Buffer
+	if v.epoch.Compare(part.Zero) == 1 {
+		fmt.Fprintf(&buf, "%s!", v.epoch)
+	}
+	writeRelease(&buf, v.release)
+	if !v.pre.isNull() {
+		fmt.Fprintf(&buf, "%s%s", v.pre.letter, v.pre.number)
+	}
+	return parseOperand(buf.String())
+}
+
+// earliestPreRelease returns the earliest pre-release of this version: the same
+// version with dev set to 0 and the local segment dropped. Ported from
+// pypa/packaging 26.2's _earliest_prerelease.
+//
+//	1.2         -> 1.2.dev0
+//	1.2.post1   -> 1.2.post1.dev0
+//
+// It is the lower bound of "a pre-release of V", which is what PEP 440's "<V
+// MUST NOT allow a pre-release of the specified version" actually means. See
+// specifierLessThan.
+func (v Version) earliestPreRelease() (Version, bool) {
+	var buf bytes.Buffer
+	if v.epoch.Compare(part.Zero) == 1 {
+		fmt.Fprintf(&buf, "%s!", v.epoch)
+	}
+	writeRelease(&buf, v.release)
+	if !v.pre.isNull() {
+		fmt.Fprintf(&buf, "%s%s", v.pre.letter, v.pre.number)
+	}
+	if !v.post.isNull() {
+		fmt.Fprintf(&buf, ".post%s", v.post.number)
+	}
+	buf.WriteString(".dev0")
+	return parseOperand(buf.String())
+}
+
+// trimmedRelease renders the version like String, but with trailing zero
+// components dropped from the release segment (always keeping at least one),
+// which is the canonical form upstream's canonicalize_version produces via
+// _TrimmedRelease. Used by Specifier equality.
+func (v Version) trimmedRelease() string {
+	trimmed := v
+	rel := v.release
+	i := len(rel)
+	for i > 1 && rel[i-1].Compare(part.Zero) == 0 {
+		i--
+	}
+	trimmed.release = rel[:i]
+	return trimmed.String()
 }
 
 // IsPostRelease returns if it is a post-release

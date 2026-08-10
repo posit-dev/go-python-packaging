@@ -292,17 +292,42 @@ mistaken for a safe patch upgrade.
 
 - **Conformance tables ported from `pypa/packaging`'s `tests/test_specifiers.py`**
   (`version/specifier_conformance_test.go`, `version/specifierset_conformance_test.go`),
-  pinned at `4eb0753dba8fcaaac8eb75463374e448f0931558`: **1,649 assertions**, of which
-  **358 failed against the pre-fix library**. Attribution is in `NOTICE`.
+  pinned at `4eb0753dba8fcaaac8eb75463374e448f0931558`. Attribution is in `NOTICE`.
+
+  **1,613 Go leaf subtests** (1,649 counting the table parents), of which **358 failed
+  against the pre-fix library**.
 
   Every expectation was cross-checked against two independent sources — the literal in
   the pinned upstream file *and* what the installed `packaging` 26.2 actually answers — so
   a stale literal cannot be baked in silently. All of them agreed.
 
+  **Denominator, stated explicitly**, because an earlier draft of this entry got it wrong.
+  `tests/test_specifiers.py` at that commit collects **2,031 test cases** from 116 test
+  functions; **1,985** of those come from the 70 parametrized functions and the remaining
+  46 from unparametrized ones. (Reconciliation: 1,939 cases with `VERSIONS` unresolved,
+  plus the 92 entries of `VERSIONS` imported from `tests/test_version.py`, is 2,031.)
+
+  ⚠️ The earlier figure of "1,735 parametrized cases" was **wrong and is withdrawn**. It
+  came from a counter that only evaluated *module-level* assignments, so every
+  `parametrize` referring to `TestIsUnsatisfiable`'s `UNSATISFIABLE`/`SATISFIABLE`
+  **ClassVars** — declared inside the class — failed to evaluate and was silently counted
+  as one case instead of its real size. It also coincidentally equalled the sum of three
+  approximate buckets quoted alongside it, which is precisely why an unreconciled figure
+  should not have been presented as exact.
+
   Not ported, with the reason recorded in each file's header: the interval subsystem
   behind `is_subset`/`is_superset`/`is_disjoint`/`is_unsatisfiable`, pickling, and the
   Python-implementation internals (`__match_args__`, `__hash__`, one-element caches,
   construction laziness, `to_range` equivalence).
+
+  ⚠️ **The size of that scope cut was also understated.** The four set-relation and
+  unsatisfiability APIs account for **259 cases**, not the "~25" previously claimed — a
+  ~10× understatement, because `TestIsUnsatisfiable` alone is **222** cases (77
+  unsatisfiable + 87 satisfiable + 23 + 17 + assorted). `TestSpecifierInternal` is a
+  further 18 and `TestSpecifierSetToRangeEquivalence` 290. The cut is a considered
+  decision, not a small one: those APIs rest on packaging 26.2's interval machinery
+  (`_to_ranges`, `_intersect_ranges`, `_LowerBound`/`_UpperBound`), which has no
+  counterpart in this module.
 
 ### Notes
 

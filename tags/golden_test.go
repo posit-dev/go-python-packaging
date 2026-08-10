@@ -29,6 +29,44 @@ var goldenTargets = map[string]Target{
 		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
 		Libc: "musl", LibcMajor: 1, LibcMinor: 2,
 	},
+	// Pre-3.8 CPython abiflags: pymalloc "m" below 3.8, UCS-4 "u" below 3.3.
+	// cp37-cp37m is the spelling every real CPython 3.7 extension wheel on PyPI
+	// carries, so these are conformance cases, not curiosities.
+	"cp37_glibc217_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 7, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 17,
+	},
+	"cp27_glibc25_x86_64.json": {
+		Implementation: "cp", PyMajor: 2, PyMinor: 7, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 5,
+	},
+	"cp32_glibc25_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 2, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 5,
+	},
+	// A hypothetical glibc major bump. upstream assumes compatibility across
+	// glibc majors, so these claim the whole glibc 2 series below them, capped
+	// at the assumed last minor of an older major (lastGlibcMinor).
+	"cp312_glibc35_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 3, LibcMinor: 5,
+	},
+	"cp312_glibc35_aarch64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "aarch64",
+		Libc: "glibc", LibcMajor: 3, LibcMinor: 5,
+	},
+	// A hypothetical musl major bump. upstream's _musllinux.platform_tags uses
+	// the major it is given verbatim, so musllinux_2_3 down to musllinux_2_0.
+	"cp312_musl23_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
+		Libc: "musl", LibcMajor: 2, LibcMinor: 3,
+	},
+	// A hypothetical Python major bump. upstream gates the stable ABI on a
+	// lexicographic (major, minor) >= (3, 2), so a 4.0 target still gets abi3.
+	"cp40_glibc239_x86_64.json": {
+		Implementation: "cp", PyMajor: 4, PyMinor: 0, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 2, LibcMinor: 39,
+	},
 	"cp310_macos12_arm64.json": {
 		Implementation: "cp", PyMajor: 3, PyMinor: 10, OS: "macos", Arch: "arm64",
 		MacMajor: 12, MacMinor: 0,
@@ -37,6 +75,89 @@ var goldenTargets = map[string]Target{
 		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "macos", Arch: "x86_64",
 		MacMajor: 14, MacMinor: 0,
 	},
+	// A declared pre-11 macOS target: the legacy major-10 minor-version walk.
+	"cp39_macos1015_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 9, OS: "macos", Arch: "x86_64",
+		MacMajor: 10, MacMinor: 15,
+	},
+	// Free-threaded (PEP 703) CPython: the cp<XY>t exact ABI, and PEP 803's
+	// abi3t in place of abi3 throughout.
+	"cp313t_glibc235_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 13, FreeThreaded: true,
+		OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 35,
+	},
+	"cp314t_macos15_arm64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 14, FreeThreaded: true,
+		OS: "macos", Arch: "arm64", MacMajor: 15, MacMinor: 0,
+	},
+	// PyPy: the implementation-specific "pypy<XY>_pp<IJ>" ABI, and the
+	// major-only "pp3-none-any" in the compatible tier.
+	"pp310_pypy73_glibc228_x86_64.json": {
+		Implementation: "pp", PyMajor: 3, PyMinor: 10, ImplMajor: 7, ImplMinor: 3,
+		OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 28,
+	},
+	"pp311_pypy73_macos14_arm64.json": {
+		Implementation: "pp", PyMajor: 3, PyMinor: 11, ImplMajor: 7, ImplMinor: 3,
+		OS: "macos", Arch: "arm64", MacMajor: 14, MacMinor: 0,
+	},
+	// A PyPy target with an unknown PyPy-side version: no implementation ABI
+	// tier, but the pp<XY>-none-<plat> tier is still there.
+	"pp310_noabi_windows_amd64.json": {
+		Implementation: "pp", PyMajor: 3, PyMinor: 10,
+		OS: "windows", Arch: "amd64",
+	},
+}
+
+// hostControlFile is handled by TestHostSysTagsControl rather than TestGolden:
+// it has a different shape (a self-describing object, not a bare array) and a
+// different purpose.
+const hostControlFile = "host_sys_tags_control.json"
+
+// hostControl mirrors host_sys_tags_control.json.
+type hostControl struct {
+	Why    string            `json:"why"`
+	Host   map[string]string `json:"host"`
+	Target Target            `json:"target"`
+	Tags   []string          `json:"tags"`
+}
+
+// TestHostSysTagsControl is the one non-circular check in this package's golden
+// suite, and it exists because the rest of the suite cannot be one.
+//
+// Every other fixture is produced by handing packaging explicit platform and ABI
+// lists, and the linux ones by monkeypatching its glibc/musl detection. That is
+// what makes arbitrary declared targets reachable, but it means those fixtures
+// only exercise packaging's tag assembly -- never its host detection -- and a
+// consistent misunderstanding on our side of how to drive packaging would be
+// faithfully baked into both the fixture and the implementation. Agreement would
+// prove only self-consistency.
+//
+// This fixture is instead the output of a bare packaging.tags.sys_tags() -- no
+// arguments, no patching, the same call pip makes -- recorded alongside the
+// Target fields describing the machine it ran on. Matching it byte for byte and
+// in order means that for at least one real interpreter on one real host, this
+// package's generation agrees with upstream end to end with nothing of ours in
+// the loop.
+//
+// The fixture is committed, so this test is host-independent. Only REGENERATION
+// is host-specific: gen_goldens.py writes it on CPython/macOS 11+/Windows and
+// leaves it alone elsewhere.
+func TestHostSysTagsControl(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", hostControlFile))
+	require.NoError(t, err)
+	var ctrl hostControl
+	require.NoError(t, json.Unmarshal(b, &ctrl))
+	require.NotEmpty(t, ctrl.Tags)
+	require.NotEmpty(t, ctrl.Why, "the fixture must carry its own rationale")
+
+	m, err := ctrl.Target.Compile()
+	require.NoError(t, err)
+	var got []string
+	for _, tag := range m.Tags() {
+		got = append(got, tag.String())
+	}
+	require.Equal(t, ctrl.Tags, got,
+		"unpatched sys_tags() on %v disagrees with the equivalent declared Target", ctrl.Host)
 }
 
 // TestGolden asserts that Target.Compile().Tags(), stringified in order,
@@ -46,6 +167,9 @@ func TestGolden(t *testing.T) {
 	require.NotEmpty(t, files)
 	for _, f := range files {
 		name := filepath.Base(f)
+		if name == hostControlFile {
+			continue // different shape; see TestHostSysTagsControl
+		}
 		t.Run(name, func(t *testing.T) {
 			var want []string
 			b, err := os.ReadFile(f)

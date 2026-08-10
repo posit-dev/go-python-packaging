@@ -1,0 +1,228 @@
+{
+  "source": "https://repology.org/api/v1/project/{glibc,musl}",
+  "regenerate": "python3 tags/data/gen_distro_baselines.py",
+  "notes": [
+    "The libc version a stock release ships, as reported by the distribution's own package repository via Repology. Released, non-rolling releases only; see gen_distro_baselines.py for the exact filters and the reviewed release list.",
+    "Red Hat Enterprise Linux has no public package repository to index. AlmaLinux N and Rocky Linux N are 1:1 rebuilds of RHEL N and ship the same glibc, so use those rows for RHEL. Amazon Linux 2023 is likewise unindexed and absent.",
+    "A host may deviate from its release's stock libc (backports, HWE, a hand-built glibc, a container image with a different base). This table names a baseline; it is not a substitute for knowing the actual target."
+  ],
+  "baselines": [
+    {
+      "distro": "almalinux",
+      "release": "8",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 28
+    },
+    {
+      "distro": "almalinux",
+      "release": "9",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 34
+    },
+    {
+      "distro": "alpine",
+      "release": "3.17",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.18",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.19",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.20",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.21",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.22",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.23",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "alpine",
+      "release": "3.24",
+      "libc": "musl",
+      "libcMajor": 1,
+      "libcMinor": 2
+    },
+    {
+      "distro": "amazonlinux",
+      "release": "2",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 26
+    },
+    {
+      "distro": "centos",
+      "release": "6",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 12
+    },
+    {
+      "distro": "centos",
+      "release": "7",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 17
+    },
+    {
+      "distro": "centos-stream",
+      "release": "9",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 34
+    },
+    {
+      "distro": "centos-stream",
+      "release": "10",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 39
+    },
+    {
+      "distro": "debian",
+      "release": "11",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 31
+    },
+    {
+      "distro": "debian",
+      "release": "12",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 36
+    },
+    {
+      "distro": "debian",
+      "release": "13",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 41
+    },
+    {
+      "distro": "fedora",
+      "release": "41",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 40
+    },
+    {
+      "distro": "fedora",
+      "release": "42",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 41
+    },
+    {
+      "distro": "fedora",
+      "release": "43",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 42
+    },
+    {
+      "distro": "opensuse-leap",
+      "release": "15.5",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 31
+    },
+    {
+      "distro": "opensuse-leap",
+      "release": "15.6",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 38
+    },
+    {
+      "distro": "rocky",
+      "release": "8",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 28
+    },
+    {
+      "distro": "rocky",
+      "release": "9",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 34
+    },
+    {
+      "distro": "ubuntu",
+      "release": "16.04",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 23
+    },
+    {
+      "distro": "ubuntu",
+      "release": "18.04",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 27
+    },
+    {
+      "distro": "ubuntu",
+      "release": "20.04",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 31
+    },
+    {
+      "distro": "ubuntu",
+      "release": "22.04",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 35
+    },
+    {
+      "distro": "ubuntu",
+      "release": "24.04",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 39
+    },
+    {
+      "distro": "ubuntu",
+      "release": "26.04",
+      "libc": "glibc",
+      "libcMajor": 2,
+      "libcMinor": 43
+    }
+  ]
+}

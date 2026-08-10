@@ -9,6 +9,141 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tags`: pre-3.8 CPython targets got the wrong exact ABI, so they matched no
+  real extension wheel. The ABI carries abiflags — pymalloc `m` below Python 3.8,
+  UCS-4 `u` below 3.3 — which were not emitted, so a CPython 3.7 target claimed
+  `cp37-cp37-<platform>` where the correct tag, and the one **every** real
+  CPython 3.7 extension wheel on PyPI carries, is `cp37-cp37m-<platform>`.
+
+  This is the reachable, real-world case of the same failure the entries below
+  describe: a matcher built for a 3.7 client declined every non-`abi3` binary
+  wheel and silently fell back to an sdist. Affected: all of 2.x, and 3.0–3.7
+  (`cp27mu`, `cp32mu`, `cp35m`, `cp36m`, `cp37m`, …). 3.8 and later were already
+  correct. Now pinned by fixtures generated from `packaging` 26.2 for cp27, cp32
+  and cp37.
+
+  ⚠️ One part of this is only right for Linux targets, and is documented in the
+  package docs rather than silently fixed. `packaging` derives the UCS-4 flag
+  from the *running* interpreter rather than the requested version, so it answers
+  `u` for any declared 2.x target; UCS-4 was the Unix default while Windows and
+  macOS CPython 2.x were UCS-2, which is the `cp27mu` vs `cp27m` split visible on
+  PyPI. This release reproduces `packaging`'s answer, so a Windows or macOS 2.x
+  target names an ABI no real wheel carries. Doing better means deliberately
+  diverging from the reference.
+
+- `tags`: three `(major, minor)` version floors were written as
+  `major == floor.major && minor >= floor.minor`, which is a same-major test
+  rather than a version comparison — it answers "below the floor" for every input
+  whose major differs, *including* inputs above it. All three now go through one
+  lexicographic helper.
+
+  **No currently constructible tag or interpreter reaches any of them**, and the
+  fix is not claimed to change a real-world answer. glibc's major has been 2
+  since 1997, every musl release is 1.x, and there is no Python 4, so each case
+  needs a version that does not exist:
+
+  - `BaselinesFor` returned *no* glibc baselines for a lower-major floor such as
+    `manylinux_1_0_x86_64`, when every recorded glibc 2.x satisfies `>= 1.0`.
+  - A musl target with a major other than 1 got no `musllinux` tags at all.
+    Upstream's `_musllinux.platform_tags` uses the major it is given verbatim, so
+    a musl 2.3 target now yields `musllinux_2_3` down to `musllinux_2_0`.
+  - A Python 4.0 target got no `abi3` tier, where upstream's `_abi3_applies`
+    compares tuples (`>= (3, 2)`) and does emit `cp40-abi3-<platform>`.
+
+  They are fixed because a floor that is not a comparison is wrong on its face,
+  and this is the kind of latent defect that becomes reachable the moment a tag
+  is built from parsed input rather than a fixed list. Both hypothetical cases
+  are pinned by golden fixtures generated from `pypa/packaging` 26.2 rather than
+  hand-written, so the expected output is measured even though no such platform
+  exists yet.
+
+- `tags`: a glibc target now claims the glibc major versions *below* its own, as
+  `pypa/packaging` does. glibc guarantees compatibility across major versions
+  ("we can assume compatibility across glibc major versions",
+  [sourceware #24636](https://sourceware.org/bugzilla/show_bug.cgi?id=24636)), so
+  a glibc 3.5 target yields `manylinux_3_5`…`manylinux_3_0` and then
+  `manylinux_2_50`…`manylinux_2_5`, legacy aliases included. Previously it
+  yielded no `manylinux` tags at all.
+
+  **No real target changes.** glibc's major has been 2 since 1997, and the
+  older-major walk cannot fire for a major-2 target — every glibc 2.x golden
+  fixture is byte-identical. The behavior is pinned in both directions: unchanged
+  for 2.x, and recorded for 3.5 on x86_64 and aarch64 by fixtures generated from
+  `packaging` 26.2.
+
+  Enumerating an unreleased major requires knowing where its minors stop, which
+  upstream takes from `_LAST_GLIBC_MINOR` — a `defaultdict` returning 50 that its
+  own comment calls a guess to be replaced "once this actually happens". That
+  placeholder is copied here **with attribution and the comment quoted**, rather
+  than replaced with a judgement of our own, so upstream's eventual correction is
+  inherited instead of diverged from. The reason to prefer upstream's guess over
+  our own narrower answer: the consumer of this list is pip's own tag logic, and
+  a tag naming a nonexistent glibc is inert — no wheel carries it, so it matches
+  nothing — whereas a *missing* tag is a false negative that would have us
+  decline a wheel pip on the same host would install.
+
+### Added
+
+- `tags`: PEP 703 free-threaded CPython targets, via the new `Target.FreeThreaded`.
+  A free-threaded target takes `cp313-cp313t-<platform>` as its exact ABI, and it
+  does **not** accept `abi3` wheels — the GIL-enabled stable ABI is a different
+  ABI, not a superset. Its stable-ABI tier is PEP 803's `abi3t` instead, both for
+  the target's own version and across the whole descending walk down to `cp32`.
+  Measured against `pypa/packaging` 26.2, whose `_abi3_applies` is explicitly
+  false for threaded builds. Requires CPython 3.13 or later, matching the floor
+  upstream puts on the `t` abiflag; `Compile` rejects it elsewhere, and rejects
+  it entirely for non-CPython implementations.
+
+- `tags`: PyPy targets, via `Implementation: "pp"` and the new
+  `Target.ImplMajor`/`ImplMinor` (the *implementation's* version, as distinct
+  from the Python version: PyPy 7.3 on Python 3.10 is `pypy310_pp73`). These
+  route through upstream's `generic_tags` path rather than `cpython_tags`:
+  `pp310-pypy310_pp73-<platform>`, then `pp310-none-<platform>`, then the
+  compatible tier — whose interpreter-any entry is the **major-only**
+  `pp3-none-any`, not `pp310-none-any`. There is no `abi3` tier; `abi3` is a
+  CPython concept. Leaving `ImplMajor`/`ImplMinor` unset means "PyPy version
+  unknown" and simply omits the implementation-ABI tier.
+
+  Previously `Implementation: "pp"` was rejected by `Compile`, so this only
+  widens what is accepted.
+
+- `tags`: macOS 10.x targets, and the pre-11 compatibility tail that macOS 11+
+  targets should always have carried. **A macOS 11-or-later target now generates
+  additional platform tags it did not before** (`macosx_10_16` down to
+  `macosx_10_4`, with the full format list on x86_64 and `universal2` alone on
+  arm64), ranked below every macOS 11+ tag. A wheel that was previously judged
+  incompatible with such a target may now match; nothing that previously matched
+  stops matching, and no ordering among the pre-existing tags changed. A declared
+  10.x target instead walks the *minor* version, as macOS's pre-11 numbering
+  requires, and emits nothing below `macosx_10_4`, where upstream's
+  `_mac_binary_formats` defines no x86_64 format at all.
+
+  macOS 10.x is accepted for `x86_64` only, which is a deliberate divergence from
+  `pypa/packaging`: it would answer a 10.x arm64 request with
+  `macosx_10_<n>_arm64` tags, because it only ever describes the host it is
+  running on. Apple silicon shipped with macOS 11, so as a *declared* target that
+  combination can only be a mistake, and `Compile` rejects it.
+
+- `tags`: `Baseline`, `Baselines`, `LookupBaseline` and `BaselinesFor` — a
+  compiled-in table of the libc version well-known Linux distribution releases
+  ship, layered over the `>=` comparison PEP 600 and PEP 656 actually specify.
+  `LookupBaseline` returns `(Baseline, bool)`, and `base.Apply(t)` fills a
+  `Target`'s libc fields from a distribution name:
+
+  ```go
+  base, ok := tags.LookupBaseline("ubuntu", "22.04")
+  m, err := base.Apply(target).Compile()
+  ```
+
+  `BaselinesFor("manylinux_2_28_x86_64")` reports which
+  recorded releases can run a wheel carrying that tag, legacy `manylinux1`/`2010`/
+  `2014` aliases included. The version numbers are derived mechanically from the
+  distributions' own package repositories; see `tags/data/gen_distro_baselines.py`
+  for the source, the filters, and how to regenerate the table. The table is
+  embedded, never fetched — nothing in `tags` reaches the network.
+
 ### Previously undocumented, shipped in 0.1.0
 
 > ⚠️ **Recorded late.** The two changes below shipped in **`v0.1.0`** (commit

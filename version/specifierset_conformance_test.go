@@ -748,13 +748,25 @@ func TestConformance_SetCombine(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, got.Equal(expect))
 
-	// Duplicates are kept, exactly as upstream keeps them: in packaging 26.2,
-	// len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0")) is 2. Equal is the
-	// operation that is blind to them.
+	// Duplicates COLLAPSE, which is where upstream settles.
+	//
+	// ⚠️ An earlier version of this assertion expected 2, citing
+	// `len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0")) == 2` in packaging
+	// 26.2 as upstream parity. That reading was wrong: the 2 only holds on a
+	// FRESH object, because `_canonical_specs()` deduplicates lazily. Measured:
+	//
+	//	c = SpecifierSet(">=1.0") & SpecifierSet(">=1.0")
+	//	len(c) -> 2 ;  str(c) -> '>=1.0' ;  len(c) -> 1
+	//
+	// So 2 was a transient artifact of upstream's cache -- the one thing this
+	// port declares non-portable -- and it made the answer depend on which
+	// method a caller happened to invoke first. `str()` is ">=1.0" under every
+	// ordering, which is the settled behavior matched here.
 	one, err := NewSpecifiers(">=1.0")
 	require.NoError(t, err)
 	dup, err := one.And(one)
 	require.NoError(t, err)
-	assert.Equal(t, 2, dup.Len())
+	assert.Equal(t, 1, dup.Len())
+	assert.Equal(t, ">=1.0", dup.String())
 	assert.True(t, dup.Equal(one))
 }

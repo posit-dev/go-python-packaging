@@ -200,18 +200,58 @@ func TestSpecifiers_And(t *testing.T) {
 	assert.False(t, combined.Check(MustParse("3.0")))
 }
 
-// ⚠️ And keeps duplicates rather than deduplicating, matching upstream:
-// len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0")) is 2 in packaging 26.2,
-// even though its str() renders the deduplicated ">=1.0". Equal is the
-// operation that is blind to duplicates.
-func TestSpecifiers_And_KeepsDuplicatesButEqualIgnoresThem(t *testing.T) {
+// And deduplicates, which is where upstream SETTLES even though a fresh object
+// reports otherwise.
+//
+// ⚠️ Measured against packaging 26.2, `len(SpecifierSet(">=1.0") &
+// SpecifierSet(">=1.0"))` is 2 on a fresh object, 1 after any canonicalizing
+// call, and `str()` is ">=1.0" always:
+//
+//	c = SpecifierSet(">=1.0") & SpecifierSet(">=1.0")
+//	len(c)      -> 2
+//	str(c)      -> '>=1.0'
+//	len(c)      -> 1      # _canonical_specs() dedupes LAZILY
+//
+// So the 2 is an artifact of upstream's lazy cache -- the very thing this port
+// declares non-portable -- and it makes the count depend on call order. An
+// earlier version of this test asserted the 2 and cited it as deliberate
+// upstream parity, which was wrong on both counts.
+//
+// Matching is unaffected either way: a conjunction is idempotent.
+func TestSpecifiers_And_Deduplicates(t *testing.T) {
 	one, err := NewSpecifiers(">=1.0")
 	require.NoError(t, err)
 
 	combined, err := one.And(one)
 	require.NoError(t, err)
-	assert.Equal(t, 2, combined.Len())
+	assert.Equal(t, 1, combined.Len(), "a repeated member collapses")
+	assert.Equal(t, ">=1.0", combined.String())
 	assert.True(t, combined.Equal(one))
+
+	// Matching is the same either way, which is why this is safe.
+	assert.True(t, combined.Check(MustParse("1.5")))
+	assert.False(t, combined.Check(MustParse("0.5")))
+
+	// Deduplication is CANONICAL, not textual: these are the same constraint.
+	a, err := NewSpecifiers(">=1.0.0")
+	require.NoError(t, err)
+	b, err := NewSpecifiers(">=1")
+	require.NoError(t, err)
+	collapsed, err := a.And(b)
+	require.NoError(t, err)
+	assert.Equal(t, 1, collapsed.Len())
+
+	// But genuinely distinct members are all kept, including the `~=` pair whose
+	// trailing zero is load-bearing.
+	narrow, err := NewSpecifiers("~=1.18.0")
+	require.NoError(t, err)
+	wide, err := NewSpecifiers("~=1.18")
+	require.NoError(t, err)
+	both, err := narrow.And(wide)
+	require.NoError(t, err)
+	assert.Equal(t, 2, both.Len(), "~=1.18.0 and ~=1.18 are different constraints")
+	assert.False(t, both.Contains("1.19.5"))
+	assert.True(t, both.Contains("1.18.0"))
 }
 
 func TestSpecifiers_And_PreReleasePolicyCombination(t *testing.T) {

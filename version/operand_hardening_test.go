@@ -47,7 +47,20 @@ func TestUnparseableOperandDoesNotPanic(t *testing.T) {
 	prospective := MustParse("1.2.3")
 
 	for _, shape := range operandPanicShapes() {
-		for _, operand := range []string{"lolwat", "", "not a version", "1.2.3.4.5-garbage"} {
+		// ⚠️ The last four are load-bearing and were MISSING.
+		//
+		// specifierCompatible panics only when the operand's first dot-segment
+		// starts with "post" or "dev", because that breaks its prefix loop on
+		// iteration one and leaves an empty slice to be sliced [:len-1].
+		// "lolwat", "", "not a version" and "1.2.3.4.5-garbage" all produce a
+		// non-empty first segment and pass through harmlessly -- so a table
+		// stocked only with those exercised every operator EXCEPT the one that
+		// could actually crash, while this test's name and header claimed the
+		// whole shape class. Verified: adding "dev1" made this test fail.
+		for _, operand := range []string{
+			"lolwat", "", "not a version", "1.2.3.4.5-garbage",
+			"dev1", "post1", "dev", "post",
+		} {
 			t.Run(shape.name+"__"+operand, func(t *testing.T) {
 				s := Specifier{op: shape.op, operand: operand, fn: shape.fn}
 				assert.NotPanics(t, func() {
@@ -74,10 +87,33 @@ func TestUnparseableOperandDoesNotPanic(t *testing.T) {
 // bad operand would arrive by.
 func TestFilterWithUnparseableOperandDoesNotPanic(t *testing.T) {
 	for _, shape := range operandPanicShapes() {
-		t.Run(shape.name, func(t *testing.T) {
-			s := Specifier{op: shape.op, operand: "lolwat", fn: shape.fn}
+		for _, operand := range []string{"lolwat", "dev1", "post1"} {
+			t.Run(shape.name+"__"+operand, func(t *testing.T) {
+				s := Specifier{op: shape.op, operand: operand, fn: shape.fn}
+				assert.NotPanics(t, func() {
+					s.Filter([]string{"1.0", "2.0a1", "also not a version"})
+				})
+			})
+		}
+	}
+}
+
+// The compatible operator's own panic shape, called out separately because it is
+// the only one in the table that is NOT about MustParse: it is a slice bound.
+//
+// `~=` derives its prefix by taking release components up to the first
+// post/dev suffix and dropping the last one. An operand that IS a suffix from
+// its first segment leaves nothing to drop, and `[:len(empty)-1]` is `[:-1]`.
+func TestCompatibleOperatorWithSuffixOnlyOperandDoesNotPanic(t *testing.T) {
+	for _, operand := range []string{"dev1", "post1", "dev", "post", "dev0", "post99"} {
+		t.Run(operand, func(t *testing.T) {
+			s := Specifier{op: "~=", operand: operand, fn: specifierCompatible}
 			assert.NotPanics(t, func() {
-				s.Filter([]string{"1.0", "2.0a1", "also not a version"})
+				assert.False(t, s.Check(MustParse("1.2.3")),
+					"an operand that is not a version cannot be satisfied")
+			})
+			assert.NotPanics(t, func() {
+				assert.Empty(t, s.Filter([]string{"1.2.3", "0.1"}))
 			})
 		})
 	}

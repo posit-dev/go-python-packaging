@@ -163,11 +163,31 @@ mistaken for a safe patch upgrade.
 - `Specifiers.Len()`, `Specifiers.List()`, `Specifiers.Equal()`, `Specifiers.And()`,
   `Specifiers.ContainsInstalled()` and `NewSpecifiersFrom()`.
 
-  `And` combines the two sets' pre-release policies rather than dropping them, and
+  `And` combines the two SETS' pre-release policies rather than dropping them, and
   returns `ErrPreReleaseConflict` when they contradict (one `Include`, one `Exclude`),
-  where upstream raises `ValueError`. Like upstream it keeps duplicates —
-  `len(SpecifierSet(">=1.0") & SpecifierSet(">=1.0"))` is 2 in packaging 26.2 — while
-  `Equal` is blind to order and duplicates.
+  where upstream raises `ValueError`. `Equal` is blind to order and duplicates.
+
+  `And` **deduplicates** its members: `NewSpecifiers(">=1.0").And(NewSpecifiers(">=1.0"))`
+  has `Len()` 1 and renders `">=1.0"`. Deduplication is canonical rather than textual, so
+  `">=1.0.0"` and `">=1"` also collapse, while `"~=1.18.0"` and `"~=1.18"` do not (their
+  trailing zero changes which versions they accept).
+
+  ⚠️ **A previous draft of this entry claimed `len(... & ...) == 2` as deliberate upstream
+  parity. That claim was wrong and has been removed.** It is true only of a *fresh*
+  upstream object: `packaging` 26.2 deduplicates lazily in `_canonical_specs()`, so
+  `len(c)` is 2, then `str(c)` is `">=1.0"`, and `len(c)` is then **1**. The 2 was a
+  transient pre-canonicalization artifact of upstream's caching — the very thing this
+  port declares non-portable — and it made the count depend on which method a caller
+  happened to invoke first. Matching was never affected either way, since a conjunction
+  is idempotent; this is purely about what `Len` and `String` report.
+
+  ⚠️ **Member pre-release policies are left alone.** `And` and `NewSpecifiersFrom` set
+  only the *set's* policy, matching upstream, whose `__and__` never touches a member's
+  `_prereleases`. An earlier draft re-stamped every member with the combined policy,
+  which could **erase** a member's explicit policy and then let autodetection reach the
+  opposite answer: a member built with `PreReleasesExclude` on the operand `>=1.0.dev1`
+  became `Auto`, autodetected `Include` off the `.dev1`, and flipped the whole set's
+  resolved policy — so the combined set offered a pre-release the original had held back.
 
   ⚠️ **`And` and `Equal` respect this type's OR-of-ANDs shape**, which upstream has no
   equivalent of (the `||` operator is this package's extension for the R constraint
@@ -181,6 +201,29 @@ mistaken for a safe patch upgrade.
   ⚠️ **`List()` is for iteration, not semantics.** It flattens across OR-groups, so it
   cannot be used to decide what a set matches or whether two sets are the same. Its doc
   comment says so. `Len()` likewise counts members across all groups.
+
+  A member read off a set via `List()` reports **its own** pre-release policy, not the
+  set's, matching upstream: `list(SpecifierSet(">=1.0.dev1", prereleases=False))[0].prereleases`
+  is `True` in `packaging` 26.2 while the set's is `False`. An earlier draft stamped the
+  set's policy onto every member at parse time, so the two were indistinguishable.
+
+- The **zero-value `Specifier`** constrains nothing, consistently. Previously
+  `Specifier{}.Contains("1.0")` was true while `Specifier{}.Contains("lolwat")` was false,
+  even though `NewSpecifiers("").Contains("lolwat")` is true — three spellings of "no
+  constraint" disagreeing on one input class. All three now agree.
+
+- **`~=` no longer panics on an operand that is entirely a post/dev suffix.**
+  `specifierCompatible` derives its prefix by taking release components up to the first
+  suffix and dropping the last one; an operand such as `dev1` or `post1` leaves nothing to
+  drop, and the slice was `[:-1]` — `slice bounds out of range`.
+
+  ⚠️ Not reachable through the public API (the grammar validates a `~=` operand), but it
+  was reachable from inside the package and therefore from any new caller, which is what
+  the exported `Specifier` and `Filter` are. Worth recording separately from the
+  `MustParse` hardening below because the *test* for that hardening did not cover it: its
+  operand list (`"lolwat"`, `""`, `"not a version"`, `"1.2.3.4.5-garbage"`) contains no
+  member that triggers this line, so it exercised every operator except the one that could
+  crash. The operand list now includes the suffix-only shapes.
 
 - `marker.Environment.With(map[string]string)`, `Environment.Lookup(name)` and
   `marker.VariableNames()`: the override seam a **partial** marker environment needs.

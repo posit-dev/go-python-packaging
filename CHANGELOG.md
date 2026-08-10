@@ -9,6 +9,8 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-10
+
 ### Fixed
 
 - `tags`: pre-3.8 CPython targets got the wrong exact ABI, so they matched no
@@ -909,7 +911,8 @@ Initial release. One module, one package per PEP concern:
 - `license/` — PyPI classifier standardization, SPDX expression parsing, and top-level
   license derivation.
 
-[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/posit-dev/go-python-packaging/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.2.0...v0.3.0

@@ -117,15 +117,38 @@ const (
 // which says nothing about a declared target, and debug-build wheels are not
 // published.
 //
-// ⚠️ Known caveat on the UCS-4 flag, inherited from upstream's host coupling.
-// upstream reads Py_UNICODE_SIZE and falls back to sys.maxunicode, so on any
-// modern host it answers "u" for a declared 2.7 target no matter which OS that
-// target names. In reality UCS-4 was the Unix default while Windows and macOS
-// CPython 2.7 were UCS-2 -- that is exactly the cp27mu vs cp27m split visible on
-// PyPI. This function reproduces upstream's answer, which is right for Linux
-// targets and wrong for a Windows or macOS 2.x target. Doing better means
-// diverging from the reference (emitting both variants, or keying "u" off
-// Target.OS), so it is recorded rather than decided here; see doc.go.
+// ⚠️ Known, deliberate limitation of the UCS-4 flag. Read this before "fixing"
+// it.
+//
+// (a) Upstream and this package are answering different questions, and this one
+// has no faithful answer. packaging.tags asks "what can THIS RUNNING
+// interpreter install", so it simply reads Py_UNICODE_SIZE and falls back to
+// sys.maxunicode. This package asks "what can a DECLARED target install", and a
+// declared target does not carry its Unicode width -- there is nothing to read.
+// So reproducing upstream here is not possible even in principle; every possible
+// behavior is a choice, and this one is chosen deliberately: answer as upstream
+// would, which on any modern host means "u" for every 2.x target regardless of
+// the OS the target names.
+//
+// (b) The practical consequence. UCS-4 was the Unix default while Windows and
+// macOS CPython 2.x were UCS-2 -- that is exactly the cp27mu vs cp27m split
+// visible on PyPI. So for Linux 2.x targets this is right, and for a Windows or
+// macOS 2.x target it names an ABI that no real wheel carries: such a target
+// matches no CPython 2.x extension wheel at all.
+//
+// (c) If 2.x targets ever matter, the likely fix is to emit BOTH ABI variants
+// (cp27m and cp27mu) and let ranking decide, NOT to guess the width from
+// Target.OS. Emitting both is complete -- it cannot miss a real wheel, and the
+// variant that does not exist for a given host is inert because no wheel carries
+// it. Guessing from Target.OS is merely a better guess, and it would still be
+// wrong for the UCS-2 Linux builds that CPython's --enable-unicode=ucs2 could
+// produce. Note that either choice gives up this package's byte-identical
+// conformance with the reference, which is its main safety net, so the trade only
+// makes sense once something reachable depends on it.
+//
+// Why it is not being done now: Python 2 has been end-of-life since 2020 and is
+// out of scope for the native resolver this module serves, so the divergence
+// would buy nothing reachable. See also doc.go's divergence list.
 func cpythonExactABI(t Target) string {
 	abi := interpTag("cp", t.PyMajor, t.PyMinor)
 	if t.FreeThreaded {

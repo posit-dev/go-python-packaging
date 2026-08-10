@@ -53,12 +53,23 @@
 //     since a generated fixture would record packaging's wider answer.
 //
 //   - The exact ABI of a pre-3.3 CPython target always carries the UCS-4 "u"
-//     flag, e.g. cp27mu, whatever OS the target names. That reproduces
-//     packaging, which derives the flag from the running interpreter rather than
-//     the requested version, but UCS-4 was the Unix default while Windows and
-//     macOS CPython 2.x were UCS-2 -- the cp27mu vs cp27m split on PyPI. A
-//     Windows or macOS 2.x target therefore names an ABI no real wheel carries.
-//     See cpythonExactABI.
+//     flag, e.g. cp27mu, whatever OS the target names.
+//
+//     This one is unavoidable rather than chosen: packaging derives the flag by
+//     reading the RUNNING interpreter (Py_UNICODE_SIZE, falling back to
+//     sys.maxunicode), and a DECLARED target carries no Unicode width to read, so
+//     there is nothing here to be faithful to. This package answers as packaging
+//     would. UCS-4 was the Unix default while Windows and macOS CPython 2.x were
+//     UCS-2 -- the cp27mu vs cp27m split on PyPI -- so the consequence is that a
+//     Windows or macOS 2.x target names an ABI no real wheel carries and matches
+//     no CPython 2.x extension wheel at all.
+//
+//     Deliberately not fixed: Python 2 is end-of-life and out of scope for the
+//     resolver this module serves, and any fix gives up byte-identical
+//     conformance with the reference. If 2.x targets ever matter, the likely
+//     answer is emitting BOTH variants and letting ranking decide, rather than
+//     guessing the width from Target.OS. cpythonExactABI carries the full
+//     analysis.
 //
 // Baseline and its lookups map well-known Linux distribution releases to the
 // libc version they ship, as a convenience for naming a compatibility floor.

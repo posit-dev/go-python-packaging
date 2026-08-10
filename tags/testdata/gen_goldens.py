@@ -53,6 +53,20 @@ def write(name, tag_iter):
 # sys_tags does not report back). On any other host it prints a notice and
 # leaves the committed fixture untouched, so running this script elsewhere is
 # safe and non-destructive.
+# Target.Arch values are lowercase, and platform.machine() is not: it reports
+# "AMD64" and "ARM64" on Windows, against the "amd64"/"arm64" that
+# Target.Compile() accepts. macOS happens to report "arm64"/"x86_64" already
+# lowercase, so passing it through raw worked there -- by luck, not by design.
+# One alias map with a lowercase fallback covers every branch, so this cannot
+# rot into a per-OS special case again.
+_ARCH_ALIASES = {"AMD64": "amd64", "ARM64": "arm64", "X86": "x86", "X86_64": "x86_64"}
+
+
+def _normalize_arch():
+    machine = platform.machine()
+    return _ARCH_ALIASES.get(machine.upper(), machine.lower())
+
+
 def write_unpatched_host_control(name):
     if platform.python_implementation() != "CPython":
         print(f"skipped {name}: not CPython (host is {platform.python_implementation()})")
@@ -71,12 +85,12 @@ def write_unpatched_host_control(name):
             return
         target |= {
             "OS": "macos",
-            "Arch": platform.machine(),
+            "Arch": _normalize_arch(),
             "MacMajor": mac_major,
             "MacMinor": mac_minor,
         }
     elif system == "Windows":
-        target |= {"OS": "windows", "Arch": {"AMD64": "amd64"}.get(platform.machine(), platform.machine())}
+        target |= {"OS": "windows", "Arch": _normalize_arch()}
     else:
         print(f"skipped {name}: {system} hosts need a libc version sys_tags() does not report")
         return

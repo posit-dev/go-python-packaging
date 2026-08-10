@@ -200,6 +200,10 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		return universalSpecifiers(*c), nil
 	}
 
+	// A specifier-less group may only be the universal set when the input is a
+	// single group. See parseGroup.
+	allowEmpty := len(segments) == 1
+
 	var sss [][]Specifier
 	for _, vv := range segments {
 		if strings.TrimSpace(vv) == "*" {
@@ -207,7 +211,7 @@ func newRSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOp
 		}
 		vv = strings.ReplaceAll(vv, "-", ".")
 
-		specs, err := parseGroup(vv, sanitizer, *c)
+		specs, err := parseGroup(vv, sanitizer, *c, allowEmpty)
 		if err != nil {
 			return Specifiers{}, err
 		}
@@ -238,13 +242,17 @@ func newSpecifiers(v string, sanitizer func(string) string, opts ...SpecifierOpt
 		return universalSpecifiers(*c), nil
 	}
 
+	// A specifier-less group may only be the universal set when the input is a
+	// single group. See parseGroup.
+	allowEmpty := len(segments) == 1
+
 	var sss [][]Specifier
 	for _, vv := range segments {
 		if strings.TrimSpace(vv) == "*" {
 			vv = ">=0.0.0"
 		}
 
-		specs, err := parseGroup(vv, sanitizer, *c)
+		specs, err := parseGroup(vv, sanitizer, *c, allowEmpty)
 		if err != nil {
 			return Specifiers{}, err
 		}
@@ -354,22 +362,49 @@ func NewSpecifier(s string, opts ...SpecifierOption) (Specifier, error) {
 //
 // A blank group is not the same question as a blank comma-separated ITEM.
 // Upstream drops empty comma-split items (`[s.strip() for s in
-// specifiers.split(",") if s.strip()]`), which is why `packaging` accepts
-// ",>=1" and ">=1,,<2"; this package still rejects both, via
-// validConstraintRegexp, and that remaining divergence is tracked in
-// rstudio/package-manager#19391. Either way it is a question about members
-// within a group, never about whether the group itself may be empty.
-func parseGroup(vv string, sanitizer func(string) string, c conf) ([]Specifier, error) {
-	if strings.TrimSpace(vv) == "" {
-		return nil, fmt.Errorf("improper constraint: empty constraint group")
+// specifiers.split(",") if s.strip()]`), so `packaging` accepts ",>=1",
+// ">=1,,<2" and ">=1,"; this function does the same, by dropping blank items
+// before validating. Dropping them cannot smuggle in an adjacent pair, because
+// what is left is re-joined with commas and still has to satisfy
+// validConstraintRegexp -- ">=1<2" is a single item with no comma to drop and
+// stays rejected.
+//
+// allowEmpty says whether a group that ends up with NO items may be the
+// universal set. It is true only for a single-group input, and that is the one
+// place this package deliberately stops short of upstream: `SpecifierSet(",")`
+// is universal in packaging 26.2, and `NewSpecifiers(",")` is universal here
+// too, but `">=1||,"` is an ERROR rather than universal. Upstream has no "||"
+// and so has no opinion; letting a comma-only SEGMENT become an empty group
+// would re-open the exact hole described above, just reached by a comma typo
+// instead of a "||" typo.
+func parseGroup(vv string, sanitizer func(string) string, c conf, allowEmpty bool) ([]Specifier, error) {
+	// Drop blank comma-separated items, as upstream does.
+	items := make([]string, 0, strings.Count(vv, ",")+1)
+	for _, item := range strings.Split(vv, ",") {
+		if strings.TrimSpace(item) == "" {
+			continue
+		}
+		items = append(items, item)
 	}
-	if !validConstraintRegexp.MatchString(vv) {
+
+	if len(items) == 0 {
+		if !allowEmpty {
+			return nil, fmt.Errorf(
+				"improper constraint: %q has no constraints in it (an empty || segment is not allowed)", vv)
+		}
+		// Every item was blank, so the whole input is punctuation: the
+		// universal set, matching SpecifierSet(",").
+		return nil, nil
+	}
+
+	normalized := strings.Join(items, ",")
+	if !validConstraintRegexp.MatchString(normalized) {
 		return nil, fmt.Errorf("improper constraint: %s", vv)
 	}
 
-	found := specifierRegexp.FindAllString(vv, -1)
+	found := specifierRegexp.FindAllString(normalized, -1)
 	if found == nil {
-		found = append(found, strings.TrimSpace(vv))
+		found = append(found, strings.TrimSpace(normalized))
 	}
 
 	specs := make([]Specifier, 0, len(found))

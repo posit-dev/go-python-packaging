@@ -9,6 +9,57 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Previously undocumented, shipped in 0.1.0
+
+> ⚠️ **Recorded late.** The two changes below shipped in **`v0.1.0`** (commit
+> `d097655`) and appear nowhere in this file. They are documented here rather than
+> in the `[0.1.0]` section because that release is tagged and the Go module proxy
+> has served it; **a published section is immutable** and backdating into one would
+> claim the release contained a note it did not. See the note at the end of this
+> section about what that implies for anyone assessing an upgrade.
+>
+> They were found by the PPM migration work (rstudio/package-manager#18634) by
+> **diffing the two modules on identical input**, not by reading this changelog —
+> which is exactly why they were found at all. Measured figures below come from
+> that exercise.
+
+- **Prefix matching and `~=` returned wrong answers, on both the Python and R
+  paths.** `padVersion` derived the right-hand version's non-numeric remainder by
+  slicing the **left**-hand version (`rightRest := left[len(rightRelease):]`), so
+  the padded right-hand side was assembled partly out of the left-hand version's
+  segments. This affected every `==X.*`, `!=X.*` and `~=` comparison whose two
+  sides had release segments of different lengths.
+
+  **Measured over the production PyPI corpus: 349 of 135,204 specifier sets change
+  their answer.** Of 928 flipped (specifier, version) pairs, `pypa/packaging` 26.2
+  agrees with the **new** behavior **915** times and with the old **13** times —
+  so it was a genuine bug fix, not a behavior swap. Those 13 are a separate,
+  pre-existing epoch divergence (`~=0.0.0<pre>` against `1!1.0`) that this change
+  neither caused nor fixed.
+
+- **`NewRSpecifiers` silently discarded the sanitizer argument it was given** and
+  forwarded an identity function instead, so a caller normalizing a non-standard
+  version token before PEP 440 parsing had that normalization ignored. Four CRAN
+  call sites in PPM pass a sanitizer.
+
+  **Measured: 0 differences over real CRAN data** (2,814 constraints), because a
+  difference requires a character outside `[0-9.]` in the version operand and real
+  CRAN constraints contain none. On an adversarial corpus, 1,447 of 135,204 change.
+
+  ⚠️ This one is **invisible in `String()`**, which renders the pre-sanitize text.
+  A consumer comparing rendered output would have seen no difference at all while
+  the matching answers changed underneath it — so the natural way to check for it
+  does not work.
+
+> ### ⚠️ If you are assessing an upgrade, diff behavior — do not read this file
+>
+> This module has now demonstrably shipped **semantic changes with no changelog
+> entry**, and the two above were the largest observable effects in the whole
+> `v0.1.1` → `v0.4.0` range. One of them was additionally invisible in `String()`.
+> A changelog is a best-effort human artifact and CI does not validate it; the only
+> reliable method is to run both versions over your own inputs and compare, which
+> is how these were found.
+
 ### Breaking
 
 - **A wildcard may no longer be combined with a pre-release.** `==1.0a1.*`,
@@ -148,6 +199,32 @@ mistaken for a safe patch upgrade.
   `SpecifierSet('')` as valid, of length zero, and containing every version. The 0.3.0
   fix covered only the zero-value/no-groups arm; this is the empty-input arm that
   survived it.
+
+- **A blank comma-separated item is now dropped rather than rejected**, matching
+  upstream. `",>=1"`, `",,>=1"`, `">=1,,<2"` and `">=1 , , <2"` previously errored and
+  now parse; `packaging` 26.2 accepts all of them, because
+  `SpecifierSet.__init__` does `[s.strip() for s in specifiers.split(",") if s.strip()]`.
+  A comma-only input (`","`, `",,"`, `" , "`) is the universal set, which is also what
+  `SpecifierSet(",")` is. A trailing comma was already tolerated and still is.
+
+  This is a widening. Measured over the production PyPI corpus plus real CRAN
+  constraints (28,528 distinct inputs across both paths): **0 newly rejected and 0
+  newly accepted** — no real constraint in either corpus has a leading or doubled
+  comma, so this is a pure conformance fix with no observable effect on real data.
+  The harness was positive-controlled: the six synthetic comma shapes all flip from
+  rejected to accepted on both paths.
+
+  ⚠️ **The comma between two constraints is still required.** `">=1<2"` and
+  `">=1 <2"` remain errors (see 0.4.0). Only *blank* items are dropped, and what
+  survives is re-joined with commas and revalidated, so dropping them cannot smuggle
+  an adjacent pair past the check.
+
+  ⚠️ **The tolerance stops at the `||` boundary**, and this is the one place the
+  package deliberately stops short of upstream. `">=1||,"` is an **error**, not
+  universal. Upstream has no `||` and so has no opinion; but since `||` is an OR and
+  an empty AND-group matches everything, treating a comma-only *segment* as universal
+  would let a stray comma disable the whole constraint — the same failure mode as a
+  stray `||`, described below.
 
   ⚠️ **Only a wholly blank input is universal.** A blank `||` segment is an error:
   `">=1||"`, `"||>=1"` and `">=1||||<2"` are rejected. Since `||` is an OR and an empty

@@ -37,12 +37,30 @@ mistaken for a safe patch upgrade.
   hand-written, so the expected output is measured even though no such platform
   exists yet.
 
-  `manylinuxTags` deliberately keeps its same-major behavior, now documented in
-  full: matching upstream across glibc majors requires its `_LAST_GLIBC_MINOR`
-  placeholder, a `defaultdict` returning 50 that upstream's own comment calls a
-  guess to be replaced "once this actually happens". Emitting ~50 tags naming
-  glibc releases that do not exist is a worse answer than a documented narrower
-  one.
+- `tags`: a glibc target now claims the glibc major versions *below* its own, as
+  `pypa/packaging` does. glibc guarantees compatibility across major versions
+  ("we can assume compatibility across glibc major versions",
+  [sourceware #24636](https://sourceware.org/bugzilla/show_bug.cgi?id=24636)), so
+  a glibc 3.5 target yields `manylinux_3_5`…`manylinux_3_0` and then
+  `manylinux_2_50`…`manylinux_2_5`, legacy aliases included. Previously it
+  yielded no `manylinux` tags at all.
+
+  **No real target changes.** glibc's major has been 2 since 1997, and the
+  older-major walk cannot fire for a major-2 target — every glibc 2.x golden
+  fixture is byte-identical. The behavior is pinned in both directions: unchanged
+  for 2.x, and recorded for 3.5 on x86_64 and aarch64 by fixtures generated from
+  `packaging` 26.2.
+
+  Enumerating an unreleased major requires knowing where its minors stop, which
+  upstream takes from `_LAST_GLIBC_MINOR` — a `defaultdict` returning 50 that its
+  own comment calls a guess to be replaced "once this actually happens". That
+  placeholder is copied here **with attribution and the comment quoted**, rather
+  than replaced with a judgement of our own, so upstream's eventual correction is
+  inherited instead of diverged from. The reason to prefer upstream's guess over
+  our own narrower answer: the consumer of this list is pip's own tag logic, and
+  a tag naming a nonexistent glibc is inert — no wheel carries it, so it matches
+  nothing — whereas a *missing* tag is a false negative that would have us
+  decline a wheel pip on the same host would install.
 
 ### Added
 

@@ -229,6 +229,23 @@ func TestBaselinesFor_MatchesCompiledTarget(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, m.IsCompatible([]Tag{{"cp312", "cp312", "manylinux_2_12_aarch64"}}),
 		"an aarch64 target below the aarch64 manylinux floor claims no manylinux tags")
+
+	// The same divergence at the other end, and for the same reason. Every
+	// recorded glibc 2.x satisfies a ">= 1.0" floor, so BaselinesFor reports
+	// them all -- but an x86_64 Target's manylinux series bottoms out at glibc
+	// 2.5, so it does not claim manylinux_1_0_x86_64 and would not install such
+	// a wheel. pip behaves the same way, which is the point.
+	lower, err := BaselinesFor("manylinux_1_0_x86_64")
+	require.NoError(t, err)
+	assert.NotEmpty(t, lower)
+
+	u, err := Target{
+		Implementation: "cp", PyMajor: 3, PyMinor: 12,
+		OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 39,
+	}.Compile()
+	require.NoError(t, err)
+	assert.False(t, u.IsCompatible([]Tag{{"cp312", "cp312", "manylinux_1_0_x86_64"}}),
+		"tag generation bounds the walk to the arch's manylinux series, unlike BaselinesFor")
 }
 
 // TestBaselines_TableInvariants guards the shape of the generated file: a

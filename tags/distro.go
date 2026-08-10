@@ -151,6 +151,21 @@ func LookupBaseline(distro, release string) (Baseline, bool) {
 // platform tag at all. In particular a bare "linux_x86_64" is an error: it
 // carries no libc guarantee to compare against, which is exactly why this
 // package ranks it below every manylinux tag.
+//
+// ⚠️ This answers the PEP 600/656 question -- "is this release's libc new enough
+// to run that wheel" -- which is NOT the same question as "does a Target for
+// that release claim this tag". Tag generation additionally bounds the walk to
+// the architecture's manylinux series, so the two part ways at both ends:
+//
+//   - manylinux_2_12_aarch64: every glibc >= 2.12 can run such a wheel, so
+//     CentOS 6 is reported here, but an aarch64 Target claims no manylinux tag
+//     older than 2.17, where that architecture's series begins.
+//   - manylinux_1_0_x86_64: reported for every recorded glibc 2.x, since 2.x
+//     satisfies ">= 1.0", but an x86_64 Target's series bottoms out at 2.5 and
+//     so does not claim it.
+//
+// Both directions are pinned by tests. Use this to reason about distributions;
+// use Target.Compile to decide whether a wheel is installable.
 func BaselinesFor(platformTag string) ([]Baseline, error) {
 	libc, major, minor, err := parseLibcPlatformTag(platformTag)
 	if err != nil {

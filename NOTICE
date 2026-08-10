@@ -37,7 +37,9 @@ musllinux glibc/musl floor tables, macOS format lists and version walks, the
 CPython free-threaded and stable-ABI tiers, the non-CPython generic-ABI tier,
 tag ordering) from pypa/packaging (https://github.com/pypa/packaging),
 specifically packaging/tags.py's cpython_tags, generic_tags, compatible_tags,
-sys_tags, mac_platforms and _mac_binary_formats, packaging/_manylinux.py, and
+sys_tags, mac_platforms and _mac_binary_formats, packaging/_manylinux.py's
+platform_tags cross-major glibc walk and its _LAST_GLIBC_MINOR placeholder
+value (pinned at 6ce6143ac8eebd91b7b0d38e92618f0702e933af, packaging 26.2), and
 packaging/_musllinux.py; and from Astral's uv
 (https://github.com/astral-sh/uv), specifically the uv-platform-tags crate,
 dual-licensed under the Apache License, Version 2.0, or the MIT license.

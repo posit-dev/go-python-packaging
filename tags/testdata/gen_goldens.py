@@ -139,6 +139,27 @@ write_linux("cp312_musl23_x86_64.json", (3, 12), "cp312", "x86_64", "musl", 2, 3
 # _py_interpreter_range((4, 0)) yields just py40 and py4.
 write_linux("cp40_glibc239_x86_64.json", (4, 0), "cp40", "x86_64", "glibc", 2, 39)
 
+# --- a glibc major bump -----------------------------------------------------
+#
+# Also hypothetical, and measured rather than reasoned about. packaging assumes
+# compatibility ACROSS glibc major versions (_manylinux.platform_tags: "We can
+# assume compatibility across glibc major versions", citing
+# https://sourceware.org/bugzilla/show_bug.cgi?id=24636), so a glibc 3.x target
+# claims the whole glibc 2 series below it as well.
+#
+# To enumerate an older major it needs that major's highest minor version, which
+# it takes from _LAST_GLIBC_MINOR -- a defaultdict whose fallback is 50 and whose
+# own comment calls it a guess (see tags/generate.go's lastGlibcMinor, which
+# quotes it). So a glibc 3.5 target yields manylinux_3_5..3_0 and then
+# manylinux_2_50..2_5, with the legacy aliases still interleaved in the major-2
+# range only.
+#
+# Both archs are recorded because the floor differs: x86_64 bottoms out at 2.5
+# with all three legacy aliases, every other arch at 2.17 with manylinux2014
+# alone.
+write_linux("cp312_glibc35_x86_64.json", (3, 12), "cp312", "x86_64", "glibc", 3, 5)
+write_linux("cp312_glibc35_aarch64.json", (3, 12), "cp312", "aarch64", "glibc", 3, 5)
+
 # --- macOS targets ----------------------------------------------------------
 #
 # packaging.tags.mac_platforms((major, minor), arch) is directly parameterized

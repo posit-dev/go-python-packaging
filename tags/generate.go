@@ -184,9 +184,11 @@ func interpTag(prefix string, major, minor int) string {
 // (packaging.tags._abi3_applies does `tuple(python_version) >= (3, 2)`), which
 // is lexicographic; so does this.
 //
-// Use it for every (major, minor) floor in this package. The one place that
-// deliberately does NOT is manylinuxTags -- see the comment there, which
-// records what upstream does across glibc majors and why we do not follow it.
+// Use it for every (major, minor) floor in this package. manylinuxTags does not
+// call it, but not because it wants a same-major test: it walks glibc majors
+// explicitly, mirroring upstream's cross-major compatibility assumption, so a
+// single boolean floor is the wrong shape there rather than the wrong
+// comparison.
 func versionAtLeast(major, minor, floorMajor, floorMinor int) bool {
 	if major != floorMajor {
 		return major > floorMajor
@@ -239,10 +241,20 @@ type legacyManylinuxAlias struct {
 
 // manylinuxFloor is the oldest glibc version (major, minor) a given
 // architecture's manylinux tags may claim, plus any legacy aliases that
-// architecture supports. Values are uv's (github.com/astral-sh/uv) floor
-// table, which matches pypa/packaging for x86_64/i686/aarch64/armv7l/
-// ppc64/ppc64le/s390x but additionally floors riscv64 and loongarch64 --
-// architectures packaging's own manylinux support predates.
+// architecture supports. Values are uv's (github.com/astral-sh/uv) floor table,
+// which matches pypa/packaging for x86_64/i686/aarch64/armv7l/ppc64/ppc64le/
+// s390x but floors riscv64 at 2.31 and loongarch64 at 2.36.
+//
+// ⚠️ Those last two are NARROWER than pypa/packaging 26.2, which floors every
+// non-x86 architecture at glibc 2.17 and does list both in its _ALLOWED_ARCHS
+// (verified against the installed 26.2; an earlier version of this comment
+// claimed packaging did not recognize them at all, which is no longer true, if
+// it ever was). So a riscv64 or loongarch64 target here declines manylinux tags
+// between 2.17 and its floor that pip on the same host would accept. That is a
+// real divergence on real architectures, inherited from #18632, and is
+// deliberately left alone here rather than changed as a drive-by: it is the
+// opposite direction from the cross-major fix below and deserves its own
+// decision. Tracked for follow-up.
 //
 // Rule (Global Constraints): a target declaring glibc (2, m) accepts a
 // manylinux_2_y tag iff m >= y, down to this floor.
@@ -291,33 +303,65 @@ func linuxPlatformTags(t Target) []string {
 	return append(plats, "linux_"+t.Arch)
 }
 
-// manylinuxTags returns "manylinux_<major>_<minor>_<arch>" for every glibc
-// version from the target's declared version down to the architecture's
-// floor (inclusive), newest first, interleaving legacy aliases immediately
-// after the version they alias.
+// lastGlibcMinor is the highest minor version assumed for a glibc major older
+// than the target's own. It is only consulted when a target declares a glibc
+// major above the floor's, since only then is there an older major to
+// enumerate.
 //
-// This is the one (major, minor) floor in this package that is deliberately NOT
-// the lexicographic versionAtLeast comparison: only glibc versions sharing the
-// target's declared major are considered, so a target whose major differs from
-// its floor's yields no manylinux tags at all.
+// The value is upstream's, and upstream is explicit that it is a placeholder.
+// packaging/_manylinux.py declares it as
+// `_LAST_GLIBC_MINOR: dict[int, int] = collections.defaultdict(lambda: 50)`
+// under this comment, quoted so its provenance travels with the number:
 //
-// That IS a divergence from upstream, and it is a considered one rather than an
-// oversight. packaging's _manylinux.platform_tags walks older majors too --
+//	# If glibc ever changes its major version, we need to know what the last
+//	# minor version was, so we can build the complete list of all versions.
+//	# For now, guess what the highest minor version might be, assume it will
+//	# be 50 for testing. Once this actually happens, update the dictionary
+//	# with the actual value.
+//
+// Copying the placeholder rather than inventing our own means we inherit
+// upstream's correction when glibc 3 actually ships. Upstream pinned at
+// 6ce6143ac8eebd91b7b0d38e92618f0702e933af (packaging 26.2).
+const lastGlibcMinor = 50
+
+// glibcVersion is a (major, minor) glibc version used while building the
+// manylinux walk.
+type glibcVersion struct {
+	major int
+	minor int
+}
+
+// manylinuxTags returns the ordered manylinux platform tags for a glibc target,
+// newest first, interleaving legacy aliases immediately after the version they
+// alias. It mirrors pypa/packaging's _manylinux.platform_tags.
+//
+// glibc guarantees compatibility across major versions -- upstream's comment is
 // "We can assume compatibility across glibc major versions", citing
-// sourceware bug 24636 -- and to enumerate them it needs to know the last minor
-// version each older major reached. It gets that from _LAST_GLIBC_MINOR, a
-// defaultdict whose fallback is 50 and whose own comment reads "guess what the
-// highest minor version might be, assume it will be 50 for testing. Once this
-// actually happens, update the dictionary with the actual value."
+// https://sourceware.org/bugzilla/show_bug.cgi?id=24636 -- so a target does not
+// merely claim its own major. The walk is:
 //
-// Mirroring that would mean this library materializing up to ~50 tags per older
-// major naming glibc releases that do not exist, on the strength of a
-// placeholder upstream flags as a guess. glibc's major has been 2 since 1997,
-// so no reachable input distinguishes the two behaviors; between a documented
-// narrower answer and a confidently-invented wider one, the narrow answer is
-// the safer default for a server deciding which wheel to hand a client. If
-// glibc 3 ever ships, this is the function to revisit, and the real
-// _LAST_GLIBC_MINOR[2] will be a fact by then rather than a guess.
+//   - the declared version's own major, from the declared minor downward;
+//   - then every older major down to the architecture's floor major, each
+//     entered at lastGlibcMinor since we cannot know where an unreleased major
+//     will stop.
+//
+// Within the floor's own major the walk bottoms out at the architecture's floor
+// minor (glibc 2.5 on x86_64/i686, 2.17 elsewhere); any other major goes down to
+// <major>_0. A declared version below its architecture's floor still yields
+// nothing.
+//
+// Being no NARROWER than upstream is the property that matters here, because the
+// consumer of this list is pip's own tag logic. A tag naming a glibc release
+// that does not exist is inert -- no wheel is ever tagged with it, so it matches
+// nothing and costs only list length. A tag we fail to emit is a false negative:
+// we would decline a wheel that pip on that same host would install, and a
+// server disagreeing with the client it serves is the failure that reaches
+// users. Hence mirroring upstream even where its input is an admitted guess.
+//
+// No real target is affected: glibc's major has been 2 since 1997, and the
+// older-major loop below does not execute for a major-2 target. Pinned in both
+// directions by golden fixtures -- glibc 2.x targets are byte-identical, and
+// glibc 3.5 x86_64/aarch64 fixtures record the cross-major walk.
 func manylinuxTags(arch string, major, minor int) []string {
 	floor, ok := manylinuxFloor[arch]
 	if !ok {
@@ -325,15 +369,30 @@ func manylinuxTags(arch string, major, minor int) []string {
 		// and every entry there has a manylinuxFloor.
 		panic("tags: no manylinux floor for arch " + arch)
 	}
-	if major != floor.major || minor < floor.minor {
-		return nil
+
+	// maxima mirrors upstream's glibc_max_list: the declared version, then each
+	// older major capped at lastGlibcMinor. For a major-2 target (every real
+	// one) this loop adds nothing and the result is the declared major alone.
+	maxima := []glibcVersion{{major, minor}}
+	for m := major - 1; m >= floor.major; m-- {
+		maxima = append(maxima, glibcVersion{m, lastGlibcMinor})
 	}
-	out := make([]string, 0, (minor-floor.minor+1)+len(floor.legacy))
-	for m := minor; m >= floor.minor; m-- {
-		out = append(out, fmt.Sprintf("manylinux_%d_%d_%s", major, m, arch))
-		for _, alias := range floor.legacy {
-			if alias.major == major && alias.minor == m {
-				out = append(out, alias.name+"_"+arch)
+
+	var out []string
+	for _, max := range maxima {
+		// Upstream floors the arch-specific "too old" minor only within the
+		// major that floor belongs to; for any other major the oldest supported
+		// is (x, 0).
+		minMinor := 0
+		if max.major == floor.major {
+			minMinor = floor.minor
+		}
+		for m := max.minor; m >= minMinor; m-- {
+			out = append(out, fmt.Sprintf("manylinux_%d_%d_%s", max.major, m, arch))
+			for _, alias := range floor.legacy {
+				if alias.major == max.major && alias.minor == m {
+					out = append(out, alias.name+"_"+arch)
+				}
 			}
 		}
 	}

@@ -29,6 +29,17 @@ var goldenTargets = map[string]Target{
 		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
 		Libc: "musl", LibcMajor: 1, LibcMinor: 2,
 	},
+	// A hypothetical glibc major bump. upstream assumes compatibility across
+	// glibc majors, so these claim the whole glibc 2 series below them, capped
+	// at the assumed last minor of an older major (lastGlibcMinor).
+	"cp312_glibc35_x86_64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "x86_64",
+		Libc: "glibc", LibcMajor: 3, LibcMinor: 5,
+	},
+	"cp312_glibc35_aarch64.json": {
+		Implementation: "cp", PyMajor: 3, PyMinor: 12, OS: "linux", Arch: "aarch64",
+		Libc: "glibc", LibcMajor: 3, LibcMinor: 5,
+	},
 	// A hypothetical musl major bump. upstream's _musllinux.platform_tags uses
 	// the major it is given verbatim, so musllinux_2_3 down to musllinux_2_0.
 	"cp312_musl23_x86_64.json": {

@@ -111,6 +111,94 @@ func TestLinux_ArchDependentFloor(t *testing.T) {
 	assert.Contains(t, tagStrings(mA.Tags()), "cp39-cp39-manylinux_2_17_aarch64")
 }
 
+// TestLinux_CrossGlibcMajor pins the cross-major manylinux walk that mirrors
+// upstream's "we can assume compatibility across glibc major versions".
+//
+// The first subtest is the one that matters operationally: a REAL target (glibc
+// major 2) must be completely unaffected by the cross-major machinery. The
+// older-major loop cannot fire there, so no glibc-1 tag and nothing above the
+// declared minor may appear.
+func TestLinux_CrossGlibcMajor(t *testing.T) {
+	t.Run("real major-2 target is unaffected", func(t *testing.T) {
+		m, err := Target{
+			Implementation: "cp", PyMajor: 3, PyMinor: 12,
+			OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 2, LibcMinor: 39,
+		}.Compile()
+		require.NoError(t, err)
+		ss := tagStrings(m.Tags())
+		assert.Contains(t, ss, "cp312-cp312-manylinux_2_39_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux_2_5_x86_64")
+		for _, s := range ss {
+			assert.NotContains(t, s, "manylinux_1_")
+			assert.NotContains(t, s, "manylinux_3_")
+			// Nothing above the declared glibc version, in particular no
+			// lastGlibcMinor-derived tag.
+			assert.NotContains(t, s, "manylinux_2_40_")
+			assert.NotContains(t, s, "manylinux_2_50_")
+		}
+	})
+
+	t.Run("major above the floor claims the series below it", func(t *testing.T) {
+		m, err := Target{
+			Implementation: "cp", PyMajor: 3, PyMinor: 12,
+			OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 3, LibcMinor: 5,
+		}.Compile()
+		require.NoError(t, err)
+		ss := tagStrings(m.Tags())
+		// Its own major, down to <major>_0 rather than the arch floor.
+		assert.Contains(t, ss, "cp312-cp312-manylinux_3_5_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux_3_0_x86_64")
+		// Then the whole major-2 series, entered at the assumed last minor and
+		// bottoming out at the arch floor, legacy aliases included.
+		assert.Contains(t, ss, "cp312-cp312-manylinux_2_50_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux_2_17_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux2014_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux_2_5_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux1_x86_64")
+		// Not below the arch floor, and never above the assumed last minor.
+		assert.NotContains(t, ss, "cp312-cp312-manylinux_2_4_x86_64")
+		assert.NotContains(t, ss, "cp312-cp312-manylinux_2_51_x86_64")
+		// The newest tag must still outrank the oldest.
+		rNew, ok1 := m.Rank([]Tag{{"cp312", "cp312", "manylinux_3_5_x86_64"}})
+		rOld, ok2 := m.Rank([]Tag{{"cp312", "cp312", "manylinux_2_5_x86_64"}})
+		require.True(t, ok1)
+		require.True(t, ok2)
+		assert.Less(t, rNew, rOld)
+	})
+
+	t.Run("major below the floor claims only its own major", func(t *testing.T) {
+		// Measured against packaging 26.2: a glibc 1.5 target yields
+		// manylinux_1_5..manylinux_1_0 and no major-2 tags at all, because
+		// upstream only walks *older* majors down to the floor's.
+		m, err := Target{
+			Implementation: "cp", PyMajor: 3, PyMinor: 12,
+			OS: "linux", Arch: "x86_64", Libc: "glibc", LibcMajor: 1, LibcMinor: 5,
+		}.Compile()
+		require.NoError(t, err)
+		ss := tagStrings(m.Tags())
+		assert.Contains(t, ss, "cp312-cp312-manylinux_1_5_x86_64")
+		assert.Contains(t, ss, "cp312-cp312-manylinux_1_0_x86_64")
+		for _, s := range ss {
+			assert.NotContains(t, s, "manylinux_2_")
+			assert.NotContains(t, s, "manylinux1_") // the legacy alias is glibc 2.5
+		}
+	})
+
+	t.Run("declared version below the arch floor yields no manylinux tags", func(t *testing.T) {
+		// aarch64's manylinux series starts at glibc 2.17.
+		m, err := Target{
+			Implementation: "cp", PyMajor: 3, PyMinor: 12,
+			OS: "linux", Arch: "aarch64", Libc: "glibc", LibcMajor: 2, LibcMinor: 12,
+		}.Compile()
+		require.NoError(t, err)
+		for _, s := range tagStrings(m.Tags()) {
+			assert.NotContains(t, s, "manylinux")
+		}
+		// ...but the bare linux tag is still there.
+		assert.Contains(t, tagStrings(m.Tags()), "cp312-cp312-linux_aarch64")
+	})
+}
+
 // TestLinux_BareLinuxRankedLast asserts the deliberate divergence from
 // pypa/packaging: a bare "linux_<arch>" tag is accepted, but ranked below
 // every manylinux/musllinux tag for the same target.

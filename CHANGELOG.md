@@ -117,6 +117,37 @@ mistaken for a safe patch upgrade.
   divergence: the OR-of-ANDs shape this type carries for the R path (`a || b`) has no
   upstream counterpart to sort within.
 
+### Notes
+
+- **`~=1.0c1` and `~=1.0rc1` answer differently, and that is conformance, not a bug.**
+  PEP 440 calls `c` an alias for `rc`, so this looks wrong; `packaging` 26.2 does the same
+  thing, measured:
+
+  ```
+  SpecifierSet("~=1.0c1").contains("1.1")   -> False
+  SpecifierSet("~=1.0rc1").contains("1.1")  -> True
+  ```
+
+  The cause is a mismatch between two upstream tables: `_prefix_regex` includes `c` (so
+  `0c1` splits into `0` + `c1`) while `_is_not_suffix` does not (so the resulting `c1`
+  counts as release rather than suffix), making the derived prefix one component narrower.
+  `c` is the only alias in that gap — `alpha`/`beta` are caught incidentally because the
+  check is a prefix match, and `pre`/`preview`/`r`/`rev` never match `_prefix_regex`.
+
+  ⚠️ **Two candidate fixes were measured and both make conformance worse.** Adding `"c"`
+  to the suffix list moves `~=1.0c1` away from the reference. Normalizing the operand
+  through the parser before deriving the prefix — the structural fix, which
+  `specifierEqual` legitimately uses — turns **0 divergences into 6**, additionally
+  breaking `~=1.0.pre1`, `~=1.0.preview1`, `~=1.0.r1`, `~=1.0.rev1` and `~=1.0.c1`,
+  because upstream derives the prefix from the **raw** operand text.
+
+  A new **410-row sweep** covers every PEP 440 pre/post alias against every permitted
+  separator for `~=` and wildcard equality, measured against `packaging` 26.2: **0
+  divergences**. ⚠️ Upstream's own test suite does not exercise `c` under `~=`, so the
+  ported conformance tables cannot catch a change here — verified, they stay green under
+  the broken variant. This sweep is the only thing holding it, and `isNotSuffix` now
+  carries a "do not add c" note explaining why.
+
 ### Added
 
 - `Specifier`, the exported **singular** specifier, with `Operator()`, `Version()`,

@@ -674,6 +674,39 @@ func versionJoin(components []string) string {
 // segment rather than a pre/post/dev suffix. Ported from pypa/packaging 26.2's
 // _is_not_suffix; it is the predicate the compatible operator uses to find
 // where the release segment ends.
+//
+// ⚠️ THE LIST OMITS "c" ON PURPOSE. DO NOT ADD IT.
+//
+// PEP 440 defines `c` as an alias for `rc`, so omitting it looks like an
+// oversight, and its consequence looks like a bug: `~=1.0c1` derives a narrower
+// prefix than `~=1.0rc1`, so `1.1` satisfies the second and not the first. But
+// that is exactly what the reference implementation does, measured:
+//
+//	packaging 26.2:  SpecifierSet("~=1.0c1").contains("1.1")   -> False
+//	                 SpecifierSet("~=1.0rc1").contains("1.1")  -> True
+//
+// The asymmetry comes from a mismatch between two upstream tables, not from
+// this port: `_prefix_regex` DOES include `c` (so `0c1` is split into `0` + `c1`)
+// while `_is_not_suffix` does NOT (so the resulting `c1` counts as release
+// rather than suffix). `c` is the only alias in that gap -- `alpha` and `beta`
+// are caught incidentally because this is a PREFIX match and they begin with
+// "a" and "b", while `pre`, `preview`, `r` and `rev` never match
+// `_prefix_regex` and so stay whole.
+//
+// Two fixes were measured and both make conformance WORSE:
+//
+//   - adding "c" here changes `~=1.0c1` away from the reference;
+//   - normalizing the operand through the parser before deriving the prefix
+//     (the structural fix, which specifierEqual legitimately uses) turns 0
+//     divergences into 6, additionally breaking `~=1.0.pre1`, `~=1.0.preview1`,
+//     `~=1.0.r1`, `~=1.0.rev1` and `~=1.0.c1`, because upstream derives the
+//     prefix from the RAW operand text and those forms do not match
+//     `_prefix_regex` un-normalized.
+//
+// ⚠️ Upstream's own test suite does not exercise `c` under `~=`, so the ported
+// conformance tables stay green either way. The 410-row sweep in
+// alias_conformance_test.go is what holds this, and it is the only thing that
+// does.
 func isNotSuffix(segment string) bool {
 	for _, prefix := range []string{"dev", "a", "b", "rc", "post"} {
 		if strings.HasPrefix(segment, prefix) {

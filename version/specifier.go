@@ -5,9 +5,8 @@ package version
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"regexp"
-	"strconv"
+	"slices"
 	"strings"
 )
 
@@ -622,52 +621,103 @@ func andCheck(v Version, specifiers []Specifier) bool {
 	return true
 }
 
+// versionSplit splits a version string into the components prefix matching and
+// the compatible operator compare, ported from pypa/packaging 26.2's
+// _version_split.
+//
+// Two details are load-bearing and were both missing from the earlier
+// hand-rolled version:
+//
+//   - The EPOCH is split off on "!" and becomes the first component, defaulting
+//     to "0". Without it, `2` and `0!2` split to different lengths and
+//     `==0!2.*` failed to match `2` even though they are the same version.
+//   - A release-plus-pre-release run in one dot-segment ("2rc1") is split into
+//     two components ("2", "rc1"), so that a pre-release behaves as its own
+//     segment for prefix purposes.
+//
+// The result is for comparison only; joining it back with versionJoin does not
+// necessarily reproduce the input.
 func versionSplit(version string) []string {
 	var result []string
-	for _, v := range strings.Split(version, ".") {
-		m := prefixRegexp.FindStringSubmatch(v)
-		if m != nil {
+
+	// rpartition on "!": everything before the LAST "!" is the epoch.
+	epoch := "0"
+	rest := version
+	if i := strings.LastIndex(version, "!"); i >= 0 {
+		if version[:i] != "" {
+			epoch = version[:i]
+		}
+		rest = version[i+1:]
+	}
+	result = append(result, epoch)
+
+	for _, item := range strings.Split(rest, ".") {
+		if m := prefixRegexp.FindStringSubmatch(item); m != nil {
 			result = append(result, m[1:]...)
 		} else {
-			result = append(result, v)
+			result = append(result, item)
 		}
 	}
 	return result
 }
 
-func isDigist(s string) bool {
-	if _, err := strconv.Atoi(s); err == nil {
-		return true
+// versionJoin rebuilds a version string from a versionSplit result, ported from
+// pypa/packaging 26.2's _version_join. The first component is the epoch.
+func versionJoin(components []string) string {
+	if len(components) == 0 {
+		return ""
 	}
-	return false
+	return components[0] + "!" + strings.Join(components[1:], ".")
 }
 
-func padVersion(left, right []string) ([]string, []string) {
-	var leftRelease, rightRelease []string
-	for _, l := range left {
-		if isDigist(l) {
-			leftRelease = append(leftRelease, l)
+// isNotSuffix reports whether a versionSplit component is part of the release
+// segment rather than a pre/post/dev suffix. Ported from pypa/packaging 26.2's
+// _is_not_suffix; it is the predicate the compatible operator uses to find
+// where the release segment ends.
+func isNotSuffix(segment string) bool {
+	for _, prefix := range []string{"dev", "a", "b", "rc", "post"} {
+		if strings.HasPrefix(segment, prefix) {
+			return false
 		}
 	}
+	return true
+}
 
-	for _, r := range right {
-		if isDigist(r) {
-			rightRelease = append(rightRelease, r)
+// numericPrefixLen counts the leading all-digit components of a versionSplit
+// result. Ported from pypa/packaging 26.2's _numeric_prefix_len.
+func numericPrefixLen(split []string) int {
+	count := 0
+	for _, segment := range split {
+		if !isASCIIDigits(segment) {
+			break
 		}
+		count++
 	}
+	return count
+}
 
-	// Get the rest of our versions
-	leftRest := left[len(leftRelease):]
-	rightRest := right[len(rightRelease):]
-
-	for i := 0; i < len(leftRelease)-len(rightRelease); i++ {
-		rightRelease = append(rightRelease, "0")
+// leftPad pads a versionSplit result with "0" components until it has
+// targetNumericLen numeric components, preserving any suffix components.
+// Ported from pypa/packaging 26.2's _left_pad.
+//
+// ⚠️ The padding is inserted AFTER the numeric prefix and BEFORE the suffix,
+// which is what the earlier padVersion got wrong: it padded only to the other
+// side's length and reassembled the two halves symmetrically, so `2` compared
+// against the spec `2.0.0.*` was never widened to three numeric components and
+// the prefix match failed.
+func leftPad(split []string, targetNumericLen int) []string {
+	numericLen := numericPrefixLen(split)
+	padNeeded := targetNumericLen - numericLen
+	if padNeeded <= 0 {
+		return split
 	}
-	for i := 0; i < len(rightRelease)-len(leftRelease); i++ {
-		leftRelease = append(leftRelease, "0")
+	out := make([]string, 0, len(split)+padNeeded)
+	out = append(out, split[:numericLen]...)
+	for i := 0; i < padNeeded; i++ {
+		out = append(out, "0")
 	}
-
-	return append(leftRelease, leftRest...), append(rightRelease, rightRest...)
+	out = append(out, split[numericLen:]...)
+	return out
 }
 
 //-------------------------------------------------------------------
@@ -704,66 +754,86 @@ func specifierCompatible(prospective Version, spec string) bool {
 	// This allows us to implement this in terms of the other specifiers instead of implementing it ourselves.
 	// The only thing we need to do is construct the other specifiers.
 
+	// Everything but the last item of the RELEASE segment. The loop stops at the
+	// first suffix component, so a pre-release in the operand is not mistaken
+	// for part of the release.
+	//
+	// ⚠️ The earlier version broke only on "post" and "dev", so a pre-release
+	// operand kept its "a1"/"rc1" component and then had it dropped as "the
+	// last item" -- which made `~=1.0a1` derive the prefix `1.*` rather than
+	// dropping only the release's last component. versionSplit now also
+	// prepends the epoch, so the operand and the prospective version agree on
+	// component count.
 	var prefixElements []string
 	for _, s := range versionSplit(spec) {
-		if strings.HasPrefix(s, "post") || strings.HasPrefix(s, "dev") {
+		if !isNotSuffix(s) {
 			break
 		}
 		prefixElements = append(prefixElements, s)
 	}
-
-	// ⚠️ An operand whose FIRST dot-segment already starts with "post" or "dev"
-	// breaks the loop on iteration one, leaving prefixElements empty -- and
-	// slicing [:len-1] of an empty slice panics with "slice bounds out of range
-	// [:-1]". Reachable with the operand "dev1", "post1", "dev" or "post".
+	// ⚠️ This guard is load-bearing, not defensive decoration.
 	//
-	// This is the same landmine class as the MustParse sites, and note which
-	// operands DO NOT trigger it: "lolwat", "", "not a version" and "1.2.3.4.5-garbage"
-	// all pass through harmlessly, because they produce a non-empty first
-	// segment. A hardening test stocked only with those shapes therefore proves
-	// nothing about this line, which is exactly how it was missed.
+	// Before versionSplit prepended the epoch, an operand whose FIRST segment
+	// was already a suffix ("dev1", "post1", "dev", "post") broke the loop on
+	// iteration one and left prefixElements empty -- and slicing [:len-1] of an
+	// empty slice panics with "slice bounds out of range [:-1]". With the epoch
+	// prepended there is always at least one element, so the panic is no longer
+	// reachable even from inside the package; the guard stays because that is a
+	// property of versionSplit rather than of this function.
+	//
+	// Note which operands do NOT trigger it: "lolwat", "", "not a version" and
+	// "1.2.3.4.5-garbage" all produce a non-empty first segment and pass through
+	// harmlessly. A hardening test stocked only with those shapes proves nothing
+	// about this line, which is exactly how it went unnoticed. The suffix-only
+	// shapes are covered in operand_hardening_test.go.
 	if len(prefixElements) == 0 {
 		return false
 	}
 
-	// We want everything but the last item in the version, but we want to ignore post and dev releases, and
-	// we want to treat the pre-release as its own separate segment.
-	prefix := strings.Join(prefixElements[:len(prefixElements)-1], ".")
-
-	// Add the prefix notation to the end of our string
-	prefix += ".*"
+	prefix := versionJoin(prefixElements[:len(prefixElements)-1]) + ".*"
 
 	return specifierGreaterThanEqual(prospective, spec) && specifierEqual(prospective, prefix)
 }
 
 func specifierEqual(prospective Version, spec string) bool {
-	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/specifiers.py#L476
-	// We need special logic to handle prefix matching
+	// We need special logic to handle prefix matching. Ported from
+	// pypa/packaging 26.2's Specifier._compare_equal.
 	if strings.HasSuffix(spec, ".*") {
-		// In the case of prefix matching we want to ignore local segment.
+		// In the case of prefix matching we want to ignore the local segment.
 		public, ok := parseOperand(prospective.Public())
 		if !ok {
 			return false
 		}
 		prospective = public
 
-		// Split the spec out by dots, and pretend that there is an implicit
-		// dot in between a release segment and a pre-release segment.
-		splitSpec := versionSplit(strings.TrimSuffix(spec, ".*"))
+		// Split the spec out by bangs and dots, pretending there is an implicit
+		// dot between a release segment and a pre-release segment. The operand
+		// goes through Parse first so that its normalized form (leading zeros,
+		// separator spellings, letter case) is what gets split -- otherwise
+		// `==1.01.*` and `==1.1.*` would split differently.
+		operand := strings.TrimSuffix(spec, ".*")
+		specVersion, ok := parseOperand(operand)
+		if !ok {
+			return false
+		}
+		splitSpec := versionSplit(specVersion.String())
+		specNumericLen := numericPrefixLen(splitSpec)
 
-		// Split the prospective version out by dots, and pretend that there is an implicit dot
-		//  in between a release segment and a pre-release segment.
 		splitProspective := versionSplit(prospective.String())
 
-		// Shorten the prospective version to be the same length as the spec
-		// so that we can determine if the specifier is a prefix of the
-		// prospective version or not.
-		if len(splitProspective) > len(splitSpec) {
-			splitProspective = splitProspective[:len(splitSpec)]
+		// ⚠️ Pad BEFORE shortening. Padding the prospective version up to the
+		// spec's numeric width first is what lets `2` match `==2.0.0.*`: it
+		// becomes ["0","2","0","0"], which then truncates to the spec exactly.
+		// Truncating first would have thrown away the room the padding needs.
+		paddedProspective := leftPad(splitProspective, specNumericLen)
+
+		// Shorten the prospective version to the spec's length, so that the
+		// question becomes whether the spec is a prefix of it.
+		if len(paddedProspective) > len(splitSpec) {
+			paddedProspective = paddedProspective[:len(splitSpec)]
 		}
 
-		paddedSpec, paddedProspective := padVersion(splitSpec, splitProspective)
-		return reflect.DeepEqual(paddedSpec, paddedProspective)
+		return slices.Equal(paddedProspective, splitSpec)
 	}
 
 	specVersion, ok := parseOperand(spec)

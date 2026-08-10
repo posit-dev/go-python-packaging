@@ -11,6 +11,74 @@ mistaken for a safe patch upgrade.
 
 ### Breaking
 
+- 🔴 **`v0.4.0` shipped a zero-padding bug that made `==X.*`, `!=X.*` and `~=` answer
+  wrongly, and a new epoch regression. If you are on `v0.4.0`, upgrade.**
+
+  Two defects, both fixed here. They are stated bluntly because a repository server
+  built on the broken code **serves versions pip excludes**.
+
+  **The padding bug.** `padVersion`'s two zero-padding loops were written
+  `for i := 0; i < len(a)-len(b); i++` while *appending to `b` inside the loop*, so the
+  bound was re-evaluated every iteration and shrank as the slice grew. They appended
+  **⌈d/2⌉ zeros for a gap of d segments**, not `d`. Traced for a gap of 3: `i=0`, `0<3`,
+  append (b now 3); `i=1`, `1<2`, append (b now 4); `i=2`, `2<1`, stop — two zeros where
+  three were needed.
+
+  | specifier | version | `v0.4.0` | `packaging` 26.2 |
+  |---|---|---|---|
+  | `==2.0.*` | `2` | true | True ✓ |
+  | `==2.0.0.*` | `2` | **false** | **True** ✗ |
+  | `!=7.0.0.*` | `7` | **true** | **False** ✗ |
+  | `~=2.0.0.0` | `2` | **false** | **True** ✗ |
+  | `==2.0.0.0.*` | `2` | **false** | **True** ✗ |
+
+  ⚠️ `!=7.0.0.*` matching `7` is the customer-visible one: a server **serves** a version
+  pip **excludes**. In PPM it is reachable from arbitrary client input on
+  `POST /__api__/repos/:id/filter/packages`.
+
+  ⚠️ **Why this survived a rewrite, a release, and a changelog claim.** `⌈1/2⌉ == 1`, so a
+  gap of **one** segment is padded correctly by accident — and every pre-existing
+  regression case in this area was a 1-segment gap. `v0.4.0`'s changelog asserted the
+  padding worked "as PEP 440 requires"; **that was true only for a 1-segment gap.** The
+  new table sweeps gaps of 1–4 in both directions.
+
+  **The epoch regression.** `versionSplit` did not prepend the epoch the way upstream's
+  `_version_split` does, so `"1!1.0"` split to `["1!1", "0"]`; the digit filter then
+  dropped `"1!1"` entirely, and the under-padding made the two sides coincidentally equal
+  — so **`==0.0.0.*` MATCHED `1!1.0`**. The retired `go-pep440-version` answered `false`
+  here and `packaging` 26.2 answers `False`, so this was a regression *introduced* by the
+  earlier `padVersion` change, not an inherited defect.
+
+  ⚠️ **This corrects a claim made in this changelog.** The entry below about `padVersion`
+  described "13 pairs where the old answer agreed with `packaging`" as *"a separate
+  pre-existing epoch divergence"*. **That framing was wrong**: they are neither separate
+  nor pre-existing. The old module was correct, the new one was wrong, and the proximate
+  cause was the very function the release claimed to have fixed. The corrected framing is
+  in that entry.
+
+  **Which fix is load-bearing, measured rather than assumed:** fixing the padding loop
+  *alone* takes the 82-row oracle from **30 divergences to 7**, and it removes every epoch
+  false-positive — so the under-padding, not the missing epoch prepend, was the proximate
+  cause of `==0.0.0.*` matching `1!1.0`. The remaining 7 need the epoch prepend and
+  suffix-aware padding. Both loops, the digit filter, and the split are now a direct port
+  of upstream's `_version_split` / `_numeric_prefix_len` / `_left_pad`, verified at **0 of
+  82**.
+
+  **Blast radius, measured against `v0.4.0` itself** over 28,528 distinct specifier tokens
+  from the production PyPI corpus plus real CRAN constraints (1,926 of them wildcard or
+  `~=`), across a 24-version panel:
+
+  - parse acceptance: **0 newly accepted, 0 newly rejected** — this is a matching fix;
+  - match results: **2 tokens change**, `==2.0.*` and `!=2.0.*`, both on the version
+    `2rc1`. `==2.0.*` now matches it and `!=2.0.*` no longer does, which is what
+    `packaging` 26.2 answers (`True` / `False`); `v0.4.0` had both backwards.
+
+  Instrument validated: 7 of 8 synthetic multi-segment controls appended to the corpus do
+  flip. (The 8th, `==1!1.0.0.*`, needs the version `1!1` which the panel does not carry;
+  it is covered directly by the oracle table.) The small real-world count reflects that
+  multi-segment-gap wildcards barely occur in real constraint data — **not** that the bug
+  was harmless, since it is reachable from arbitrary client input.
+
 - `WithPreRelease(true)` no longer suppresses the operator-level pre-release guards.
 
   It used to set a flag on the `Version` being tested that made

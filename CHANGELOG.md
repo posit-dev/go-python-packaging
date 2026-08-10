@@ -32,10 +32,22 @@ mistaken for a safe patch upgrade.
 
   **Measured over the production PyPI corpus: 349 of 135,204 specifier sets change
   their answer.** Of 928 flipped (specifier, version) pairs, `pypa/packaging` 26.2
-  agrees with the **new** behavior **915** times and with the old **13** times —
-  so it was a genuine bug fix, not a behavior swap. Those 13 are a separate,
-  pre-existing epoch divergence (`~=0.0.0<pre>` against `1!1.0`) that this change
-  neither caused nor fixed.
+  agrees with the **new** behavior **915** times and with the old **13** times.
+
+  ⚠️ **Correction.** Those 13 were previously described here as *"a separate,
+  pre-existing epoch divergence that this change neither caused nor fixed"*. **That was
+  wrong on both counts, and the correction matters more than the original claim.** They
+  are neither separate nor pre-existing: the retired module answered *correctly* on them,
+  the change made them *wrong*, and the proximate cause is `padVersion` itself — the very
+  function this entry credits with a fix. `==0.0.0.*` began matching `1!1.0` because
+  `versionSplit` does not prepend the epoch, so `"1!1"` failed the digit test, was dropped
+  by the filter, and the padding loops' under-counting made the two sides coincidentally
+  equal.
+
+  So the honest summary of `padVersion` across `v0.1.0` → `v0.4.0` is: it fixed 915 pairs
+  and **broke 13**, and both the residual under-padding and the epoch regression are fixed
+  under `## [Unreleased]` above, verified at 0 of 82 against an oracle that sweeps
+  multi-segment gaps.
 
 - **`NewRSpecifiers` silently discarded the sanitizer argument it was given** and
   forwarded an identity function instead, so a caller normalizing a non-standard

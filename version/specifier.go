@@ -146,8 +146,14 @@ func init() {
 	// One rule, one copy. A singular constructor validating with the plural
 	// grammar is a coupling that breaks silently whenever the plural grammar
 	// moves, which is exactly how this was introduced.
+	// ⚠️ Uses the same (?i) flag and the same [\s\v] whitespace class as
+	// validConstraintRegexp above. The two grammars are deliberately independent
+	// about COMMAS and must stay identical about everything else -- if the
+	// singular one were case-sensitive, `NewSpecifier("==1.0DEV")` would be
+	// rejected while `NewSpecifiers("==1.0DEV")` parsed, which is a fresh version
+	// of the very inconsistency splitting them was meant to remove.
 	singleConstraintRegexp = regexp.MustCompile(
-		fmt.Sprintf(`^\s*%s\s*$`, constraint),
+		fmt.Sprintf(`(?i)^%[1]s*%[2]s%[1]s*$`, wsp, constraint),
 	)
 
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)

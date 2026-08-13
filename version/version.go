@@ -62,6 +62,13 @@ type Version struct {
 	local    string
 	key      key
 	original string
+
+	// packed is a fixed-size integer encoding of key, valid when packable is
+	// true. See packed.go. Compare uses it to order two packable versions
+	// with a handful of integer comparisons instead of the allocating
+	// interface-driven path through key.
+	packed   packedKey
+	packable bool
 }
 
 type key struct {
@@ -236,6 +243,8 @@ func Parse(v string) (Version, error) {
 		number: devN,
 	}
 
+	packed, packable := packVersion(epoch, release, pre, post, dev, local)
+
 	return Version{
 		epoch:    epoch,
 		release:  release,
@@ -245,6 +254,8 @@ func Parse(v string) (Version, error) {
 		local:    local,
 		key:      cmpkey(epoch, release, pre, post, dev, local),
 		original: v,
+		packed:   packed,
+		packable: packable,
 	}, nil
 }
 
@@ -303,6 +314,14 @@ func cmpkey(epoch part.BigInt, release []part.BigInt, pre, post, dev letterNumbe
 // returns -1, 0, or 1 if this version is smaller, equal,
 // or larger than the other version, respectively.
 func (v Version) Compare(other Version) int {
+	// The packed fast path: when both versions carry a packed key, a few
+	// integer comparisons decide the whole ordering. The packed key is a
+	// complete encoding of the comparison key for packable versions -- see
+	// packed.go -- so this needs no fallback tie-break.
+	if v.packable && other.packable {
+		return v.packed.compare(other.packed)
+	}
+
 	// A quick, efficient equality check
 	if v.String() == other.String() {
 		return 0
@@ -346,11 +365,33 @@ func (v Version) Compare(other Version) int {
 	// real.Compare(Version{}) dereferenced a nil part and crashed while
 	// Version{}.Compare(real) returned -1, because only the k1 side was ever
 	// actually padded. That asymmetry is the tell.
+	// ⚠️ padParts, not Parts.Padding. go-version v0.0.2's Parts.Normalize
+	// reslices (ret = ret[:i]) leaving len < cap, and Parts.Padding appends
+	// into that spare capacity IN PLACE -- so a by-value copy of a Version
+	// shares a backing array with its original, and two goroutines comparing
+	// copies of the same version race on it. Padding into a fresh slice makes
+	// Compare read-only on both receivers, which is what lets a Version be
+	// shared across goroutines.
 	n := max(len(k1.release), len(k2.release))
-	k1.release = k1.release.Padding(n, part.Zero)
-	k2.release = k2.release.Padding(n, part.Zero)
+	k1.release = padParts(k1.release, n)
+	k2.release = padParts(k2.release, n)
 
 	return k1.compare(k2)
+}
+
+// padParts returns parts extended with part.Zero to size elements, never
+// writing through parts' own backing array. See the caller for why appending
+// in place (Parts.Padding) is a data race.
+func padParts(parts part.Parts, size int) part.Parts {
+	if len(parts) >= size {
+		return parts
+	}
+	padded := make(part.Parts, size)
+	copy(padded, parts)
+	for i := len(parts); i < size; i++ {
+		padded[i] = part.Zero
+	}
+	return padded
 }
 
 // Equal tests if two versions are equal.

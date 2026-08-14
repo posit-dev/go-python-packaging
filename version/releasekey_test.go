@@ -90,6 +90,14 @@ func TestDumpReleaseGrid(t *testing.T) {
 // says the migration changes no answer.
 //
 // It is a reference, not a fallback: nothing in the package calls it.
+//
+// Two guards from the original are dropped, and both are unreachable rather
+// than forgotten: it refused a non-numeric epoch and stopped at a non-numeric
+// release segment, and it stripped leading zeros from each run. BaseVersion
+// renders every component through big.Int.String(), which produces only ASCII
+// digits and never a leading zero, so neither guard can fire on a version this
+// package parsed. Reinstating them would make the reference agree with itself
+// on inputs it cannot receive, and would not change a single comparison below.
 func releaseKeyRef(v Version) (epoch string, release []string) {
 	base := v.BaseVersion()
 	epoch = "0"

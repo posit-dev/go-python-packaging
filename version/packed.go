@@ -95,9 +95,10 @@ const (
 	packedDevMax  = 1<<packedDevBits - 1
 
 	// ⚠️ packedMaxSegments is NOT a tunable knob: the release-word assembly
-	// below is hand-unrolled for exactly six segments (three words of two),
-	// so raising this constant alone would admit 7+ segment versions while
-	// silently dropping everything past segs[5]. The guards below pin it.
+	// in packRelease is hand-unrolled for exactly six segments (three words
+	// of two), so raising this constant alone would admit 7+ segment versions
+	// while silently dropping everything past segs[5]. The guards below pin
+	// it.
 	packedMaxSegments = 6
 
 	// preClass values, in PEP 440 order.
@@ -114,7 +115,7 @@ var (
 	// The w3 fields fill the word exactly.
 	_ [64 - (packedPreClassShift + packedPreClassBits)]struct{}
 	_ [(packedPreClassShift + packedPreClassBits) - 64]struct{}
-	// The word assembly in packVersion is unrolled for exactly 6 segments.
+	// The word assembly in packRelease is unrolled for exactly 6 segments.
 	_ [packedMaxSegments - 6]struct{}
 	_ [6 - packedMaxSegments]struct{}
 	// Every preClass value fits its field.
@@ -161,6 +162,65 @@ func smallUint(b part.BigInt, limit uint64) (uint64, bool) {
 	return u, true
 }
 
+// releaseLen returns the number of release segments left after PEP 440's
+// trailing-zero stripping, i.e. the length of the prefix cmpkey compares. It
+// is the length alone rather than a subslice so that callers who want the
+// segments and callers who only want the count share one definition of where
+// the release ends.
+//
+// The zero test is big.Int.Sign, which is exact at every magnitude. Asking
+// smallUint whether the segment is a small zero would answer the same thing
+// for every input the grammar admits -- a segment too large to extract is
+// certainly not zero -- but only by accident of the two conditions coinciding.
+func releaseLen(release []part.BigInt) int {
+	n := len(release)
+	for n > 0 {
+		if bi := big.Int(release[n-1]); bi.Sign() != 0 {
+			break
+		}
+		n--
+	}
+	return n
+}
+
+// packRelease packs a release segment into three words of six 32-bit fields,
+// most significant segment first, or ok=false when it does not fit: more than
+// packedMaxSegments segments after stripping, or any segment at or above
+// 2^32.
+//
+// Trailing zeros are stripped first and the remainder zero-padded to the fixed
+// width, which preserves order: cmpkey strips the same zeros, and comparing
+// two stripped tuples lexicographically gives the same answer as comparing
+// their zero-padded fixed-width forms.
+//
+// An EMPTY release packs, to three zero words -- the same key version "0"
+// gets, which is the right answer for a release-only key (see ReleaseKey) but
+// NOT for a whole-version key. packVersion therefore rejects an empty release
+// itself, before calling this; see the comment there.
+//
+// ⚠️ This is the single definition of the release word layout, shared by
+// packVersion and ReleaseKey. Two copies could drift, and a drifted copy would
+// order versions consistently within itself while disagreeing with the other,
+// which is exactly the kind of split that no single-encoding test can see.
+func packRelease(release []part.BigInt) (w [3]uint64, ok bool) {
+	n := releaseLen(release)
+	if n > packedMaxSegments {
+		return w, false
+	}
+	var segs [packedMaxSegments]uint64
+	for i := 0; i < n; i++ {
+		v, ok := smallUint(release[i], packedSegMax)
+		if !ok {
+			return [3]uint64{}, false
+		}
+		segs[i] = v
+	}
+	w[0] = segs[0]<<packedSegBits | segs[1]
+	w[1] = segs[2]<<packedSegBits | segs[3]
+	w[2] = segs[4]<<packedSegBits | segs[5]
+	return w, true
+}
+
 // packVersion computes the packed comparison key for a parsed version, or
 // ok=false when the version does not fit the packed layout and must use the
 // general comparison path.
@@ -187,30 +247,11 @@ func packVersion(epoch part.BigInt, release []part.BigInt, pre, post, dev letter
 		return k, false
 	}
 
-	// Strip trailing zero segments; cmpkey does the same, and zero-padding
-	// the remainder to fixed width preserves the resulting order.
-	n := len(release)
-	for n > 0 {
-		if v, ok := smallUint(release[n-1], packedSegMax); ok && v == 0 {
-			n--
-			continue
-		}
-		break
-	}
-	if n > packedMaxSegments {
+	w, relOK := packRelease(release)
+	if !relOK {
 		return k, false
 	}
-	var segs [packedMaxSegments]uint64
-	for i := 0; i < n; i++ {
-		v, ok := smallUint(release[i], packedSegMax)
-		if !ok {
-			return k, false
-		}
-		segs[i] = v
-	}
-	k.w0 = segs[0]<<packedSegBits | segs[1]
-	k.w1 = segs[2]<<packedSegBits | segs[3]
-	k.w2 = segs[4]<<packedSegBits | segs[5]
+	k.w0, k.w1, k.w2 = w[0], w[1], w[2]
 
 	// Suffix word. The class substitutions mirror cmpkey exactly.
 	var preClass, preN uint64

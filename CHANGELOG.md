@@ -9,6 +9,34 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- `version`: `Version.ReleaseKey()` and the `ReleaseKey` type, for consumers
+  that need to group or bracket versions by their **release** — the epoch and
+  the release segments with trailing zeros stripped — ignoring the
+  pre/post/dev/local suffix. `ReleaseKey.Compare` orders two keys, and
+  `ReleaseKey.String` renders the smallest version string carrying a key.
+
+  Until now the only way to reach a version's release from outside this
+  package was `BaseVersion()`, which renders the version back to text (a
+  `bytes.Buffer` plus one `math/big` decimal conversion per segment) and
+  leaves the caller to split the result apart again. `ReleaseKey` derives the
+  same answer from the parsed fields: **~16 ns and zero allocations, against
+  ~220 ns and 10 allocations** for the render-and-split it replaces, measured
+  on `2024.10.31`. Comparing two keys is ~3 ns.
+
+  The ordering is exact at every magnitude — PEP 440 puts no ceiling on an
+  epoch or a release segment, and datestamped and calendar versions push real
+  segments high — so keys that do not fit the packed layout compare as
+  arbitrary-precision integers. It is pinned to pypa/packaging 26.2's own
+  release key (`Version._key[0:2]`) by a frozen fixture.
+
+  ⚠️ `ReleaseKey` is deliberately coarser than the version order: `1.0`,
+  `1.0.0`, `1.00`, `1.0a1`, `1.0.post3.dev2` and `1.0+ubuntu1` all share one
+  key. It is also coarser at the zero value — the zero `ReleaseKey` compares
+  equal to the key of `"0"`, where `Version.Compare` sorts an uninitialized
+  `Version` strictly below every real version.
+
 ## [0.6.0] - 2026-08-14
 
 ### Notes

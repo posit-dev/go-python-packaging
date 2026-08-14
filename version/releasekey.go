@@ -16,8 +16,13 @@ import (
 // 1.0a1, 1.0.post3.dev2 and 1.0+ubuntu1 all carry the same ReleaseKey, because
 // PEP 440 gives every one of them epoch 0 and, after stripping, the release
 // tuple (1). A consumer that needs the full order wants Compare on the Version;
-// this key exists for consumers that need to group or bracket versions BY
+// this key exists for consumers that need to ORDER or PARTITION versions by
 // release, where the pre/post/dev/local suffix must not participate.
+//
+// ⚠️ "Partition", not "index": a ReleaseKey is not comparable with == and so
+// cannot be a map key. Use Compare — sort by it and scan the runs of equal
+// keys. String() is a stable scalar form, but it allocates, which is the cost
+// this type exists to avoid.
 //
 // # Why this is not just "read the release segments"
 //
@@ -25,10 +30,13 @@ import (
 // BaseVersion(), which renders "1!3.4.5" — and rendering means a bytes.Buffer
 // and one math/big decimal conversion per segment, followed by the caller
 // splitting the result back apart. go-pyresolver's PEP 440 set algebra did
-// exactly that, once per candidate version per containment test, and it cost
-// 32% of a warm resolution (rstudio/package-manager#19713 and its neighbours).
+// exactly that, once per candidate version per containment test.
+//
 // A key derived from the parsed fields costs no rendering, no parsing and no
-// allocation, and answers the same question.
+// allocation, and answers the same question: BenchmarkReleaseKeyVsBaseVersion-
+// Split measures 16 ns and 0 allocations against 220 ns and 10 allocations on
+// "2024.10.31". Deriving one costs more when the Version has to be copied out
+// of a slice first (~24 ns), because the receiver is by value; see ReleaseKey().
 //
 // # Ordering
 //
@@ -58,6 +66,20 @@ import (
 // and reading a math/big value does not mutate it — so a key is safe to share
 // across goroutines exactly as the Version it came from is.
 //
+// # ⚠️ A key is not a bound on its own group
+//
+// String() renders the shortest version string carrying the key, but that
+// version is NOT the least version in the group: 1.0a1 and 1.0.dev0 carry the
+// key of "1" and sort strictly BELOW it. Neither is there a greatest — .postN
+// and +local extend the group upward without limit. So
+//
+//	lo, _ := Parse(k.String())   // ⚠️ NOT a lower bound on k's group
+//
+// silently excludes every pre-release and dev release of that release. A
+// consumer bracketing a release group needs positions between versions, which
+// is a different thing from a version; see go-pyresolver's pep440set for one
+// treatment of it.
+//
 // ReleaseKey is NOT comparable with ==; it holds a slice. Use Compare.
 type ReleaseKey struct {
 	// w is the packed encoding of the stripped release, valid when packed is
@@ -78,6 +100,15 @@ type ReleaseKey struct {
 //
 // It allocates nothing: the epoch is a by-value copy of a math/big header and
 // the release is a subslice of v's own.
+//
+// ⚠️ The receiver is by VALUE, so calling this copies the whole Version — a
+// large struct, and this method does not inline. That is deliberate, for
+// consistency with every other Version method and because a by-value receiver
+// cannot write through to the caller's Version; but it means a caller ranging
+// over a []Version pays ~50% more per key than one holding a single Version in
+// a local. compareVersions takes pointers precisely to dodge that copy in
+// sort's inner loop, and a caller with the same problem can hoist the Version
+// out of the loop once.
 func (v Version) ReleaseKey() ReleaseKey {
 	n := releaseLen(v.release)
 	k := ReleaseKey{
@@ -96,8 +127,12 @@ func (v Version) ReleaseKey() ReleaseKey {
 	// reasons that have nothing to do with the release (a local label, a large
 	// dev number), and buying a few nanoseconds once per key with a standing
 	// assumption about another key's layout is a bad trade.
+	//
+	// k.release rather than v.release: it is the same segments already
+	// stripped, so packRelease's own strip finds nothing left to do instead of
+	// rescanning the trailing zeros.
 	if bi := big.Int(v.epoch); bi.Sign() == 0 {
-		k.w, k.packed = packRelease(v.release)
+		k.w, k.packed = packRelease(k.release)
 	}
 	return k
 }
@@ -128,8 +163,11 @@ func (k ReleaseKey) Compare(o ReleaseKey) int {
 // packing bug cannot hide behind the fast path.
 func (k ReleaseKey) compareGeneral(o ReleaseKey) int {
 	// (*big.Int)(&…) rather than big.Int(…): part.BigInt IS a big.Int, so the
-	// pointer conversion is free, where the value conversion would copy a
-	// header per segment for no reason. Cmp only reads through both pointers.
+	// pointer conversion is free, where the value conversion copies a header.
+	// That matters HERE, in a per-segment loop; elsewhere in this file the
+	// value conversion is used for a single Sign() or String() call, where one
+	// header copy reads more plainly than a pointer conversion. Cmp only reads
+	// through both pointers.
 	if c := (*big.Int)(&k.epoch).Cmp((*big.Int)(&o.epoch)); c != 0 {
 		return c
 	}
@@ -150,14 +188,19 @@ func (k ReleaseKey) compareGeneral(o ReleaseKey) int {
 	return 0
 }
 
-// String renders the key as the smallest version string carrying it: the
-// stripped release, dot-joined, with an "N!" epoch prefix when the epoch is
-// nonzero. The empty release renders as "0", which is the version that shares
-// its key, so the result always parses and always round-trips —
+// String renders the key in canonical shortest form: the stripped release,
+// dot-joined, with an "N!" epoch prefix when the epoch is nonzero. The empty
+// release renders as "0", so the result always parses and always round-trips —
 // Parse(k.String()).ReleaseKey() compares equal to k.
+//
+// ⚠️ THE RESULT IS NOT A BOUND ON THE GROUP. It is the shortest spelling
+// carrying the key, not the smallest version carrying it: 1.0a1 and 1.0.dev0
+// carry the key of "1" and sort strictly below Parse("1"), and .postN and
+// +local carry it and sort above with no upper limit. See the type doc.
 //
 // This exists so that a key appears legibly in a test failure or a %v; it is
 // not on any hot path, and nothing in this package's ordering goes through it.
+// It allocates, unlike everything else here.
 func (k ReleaseKey) String() string {
 	var b strings.Builder
 	if bi := big.Int(k.epoch); bi.Sign() != 0 {

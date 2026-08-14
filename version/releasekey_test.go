@@ -399,17 +399,58 @@ func TestReleaseKeyRefinesVersionOrder(t *testing.T) {
 	for _, name := range []string{"pypa-26.2-grid.ranked.gz", "pypa-26.2-corpus-sample.ranked.gz"} {
 		es := readRankedFixture(t, name)
 		sample := shuffledSample(es, 900, 13)
+		// The assertion below only fires on a strictly-below pair, so an
+		// implementation whose Compare never returned a negative would pass it
+		// without being checked at all. Count them and require some.
+		below := 0
 		for i := range sample {
 			ki := sample[i].v.ReleaseKey()
 			for j := range sample {
 				if ki.Compare(sample[j].v.ReleaseKey()) >= 0 {
 					continue
 				}
+				below++
 				if sample[i].rank >= sample[j].rank {
 					t.Fatalf("%s: release key of %q is below %q, but packaging ranks them %d vs %d",
 						name, sample[i].s, sample[j].s, sample[i].rank, sample[j].rank)
 				}
 			}
+		}
+		if below == 0 {
+			t.Fatalf("%s: no sampled pair had a strictly smaller release key; the check was vacuous", name)
+		}
+		t.Logf("%s: %d strictly-below pairs, all consistent with packaging's ranks", name, below)
+	}
+}
+
+// TestReleaseKeyStringIsNotABound pins the trap the type doc warns about: the
+// version String() renders is the shortest one carrying the key, NOT the least
+// one, so a consumer must not reach for it as a lower bound.
+//
+// This is asserted rather than only documented because the wrong reading is the
+// natural one and produces a silently narrow bracket -- it drops every
+// pre-release and dev release of the release.
+func TestReleaseKeyStringIsNotABound(t *testing.T) {
+	k := mustParse(t, "1.0").ReleaseKey()
+	lo := mustParse(t, k.String())
+
+	for _, s := range []string{"1.0a1", "1.0b2", "1.0rc3", "1.0.dev0", "1.0a1.dev0"} {
+		v := mustParse(t, s)
+		if c := v.ReleaseKey().Compare(k); c != 0 {
+			t.Fatalf("precondition: %q is not in the group (%d)", s, c)
+		}
+		if c := v.Compare(lo); c >= 0 {
+			t.Errorf("%q vs Parse(key.String()) = %d, want -1: String() must not be "+
+				"documentable as the group's lower bound", s, c)
+		}
+	}
+	for _, s := range []string{"1.0.post1", "1.0+ubuntu1", "1.0.post99999"} {
+		v := mustParse(t, s)
+		if c := v.ReleaseKey().Compare(k); c != 0 {
+			t.Fatalf("precondition: %q is not in the group (%d)", s, c)
+		}
+		if c := v.Compare(lo); c <= 0 {
+			t.Errorf("%q vs Parse(key.String()) = %d, want +1", s, c)
 		}
 	}
 }

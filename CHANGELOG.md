@@ -23,7 +23,12 @@ mistaken for a safe patch upgrade.
   leaves the caller to split the result apart again. `ReleaseKey` derives the
   same answer from the parsed fields: **~16 ns and zero allocations, against
   ~220 ns and 10 allocations** for the render-and-split it replaces, measured
-  on `2024.10.31`. Comparing two keys is ~3 ns.
+  on `2024.10.31`. Comparing two packed keys is ~3 ns; ~8 ns when either side
+  did not pack.
+
+  ⚠️ The ~16 ns is for a `Version` held in a local. The receiver is by value
+  and the method does not inline, so a caller ranging over a `[]Version` pays
+  the struct copy too — about 24 ns.
 
   The ordering is exact at every magnitude — PEP 440 puts no ceiling on an
   epoch or a release segment, and datestamped and calendar versions push real
@@ -36,6 +41,13 @@ mistaken for a safe patch upgrade.
   key. It is also coarser at the zero value — the zero `ReleaseKey` compares
   equal to the key of `"0"`, where `Version.Compare` sorts an uninitialized
   `Version` strictly below every real version.
+
+  ⚠️ **`ReleaseKey.String()` is not a bound on the group.** It renders the
+  shortest version string carrying the key, not the smallest version carrying
+  it: `1.0a1` and `1.0.dev0` carry the key of `"1"` and sort strictly *below*
+  `Parse("1")`, and `.postN` and `+local` sort above it without limit. And
+  because a `ReleaseKey` holds a slice it is not comparable with `==` and
+  cannot be a map key — sort by `Compare` and scan the equal runs.
 
 ## [0.6.0] - 2026-08-14
 

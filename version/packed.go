@@ -183,10 +183,10 @@ func releaseLen(release []part.BigInt) int {
 	return n
 }
 
-// packRelease packs a release segment into three words of six 32-bit fields,
-// most significant segment first, or ok=false when it does not fit: more than
-// packedMaxSegments segments after stripping, or any segment at or above
-// 2^32.
+// packRelease packs a whole release — all of its segments — into three words
+// of six 32-bit fields, most significant segment first, or ok=false when it
+// does not fit: more than packedMaxSegments segments after stripping, or any
+// segment at or above 2^32.
 //
 // Trailing zeros are stripped first and the remainder zero-padded to the fixed
 // width, which preserves order: cmpkey strips the same zeros, and comparing

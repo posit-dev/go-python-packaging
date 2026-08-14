@@ -66,18 +66,38 @@ type packedKey struct {
 	w0, w1, w2, w3 uint64
 }
 
-// Bit widths and derived limits for the suffix word.
+// Bit widths for every w3 field, and shifts DERIVED from them so that a
+// width change cannot silently desynchronize the layout. The compile-time
+// guards below pin the widths to exactly 64 bits: widening any field without
+// shrinking another stops the build instead of quietly shifting preClass off
+// the top of the word (4<<62 == 0 for a uint64, which would collapse "no
+// pre-release" into the dev-only -Infinity class).
 const (
-	packedSegBits  = 32
-	packedPreNBits = 20
-	packedPostBits = 14
-	packedDevBits  = 25
+	packedSegBits      = 32
+	packedPreClassBits = 3
+	packedPreNBits     = 20
+	packedPostFlagBits = 1
+	packedPostBits     = 14
+	packedDevFlagBits  = 1
+	packedDevBits      = 25
+
+	// w3 shifts, least significant field first.
+	packedDevNShift     = 0
+	packedDevFlagShift  = packedDevNShift + packedDevBits
+	packedPostNShift    = packedDevFlagShift + packedDevFlagBits
+	packedPostFlagShift = packedPostNShift + packedPostBits
+	packedPreNShift     = packedPostFlagShift + packedPostFlagBits
+	packedPreClassShift = packedPreNShift + packedPreNBits
 
 	packedSegMax  = 1<<packedSegBits - 1
 	packedPreNMax = 1<<packedPreNBits - 1
 	packedPostMax = 1<<packedPostBits - 1
 	packedDevMax  = 1<<packedDevBits - 1
 
+	// ⚠️ packedMaxSegments is NOT a tunable knob: the release-word assembly
+	// below is hand-unrolled for exactly six segments (three words of two),
+	// so raising this constant alone would admit 7+ segment versions while
+	// silently dropping everything past segs[5]. The guards below pin it.
 	packedMaxSegments = 6
 
 	// preClass values, in PEP 440 order.
@@ -86,6 +106,19 @@ const (
 	preClassB      = 2
 	preClassRC     = 3
 	preClassInf    = 4 // no pre-release: pre position is +Infinity
+)
+
+// Compile-time layout guards: a negative array length is a compile error, so
+// each pair of complementary lengths forces exact equality.
+var (
+	// The w3 fields fill the word exactly.
+	_ [64 - (packedPreClassShift + packedPreClassBits)]struct{}
+	_ [(packedPreClassShift + packedPreClassBits) - 64]struct{}
+	// The word assembly in packVersion is unrolled for exactly 6 segments.
+	_ [packedMaxSegments - 6]struct{}
+	_ [6 - packedMaxSegments]struct{}
+	// Every preClass value fits its field.
+	_ [(1 << packedPreClassBits) - 1 - preClassInf]struct{}
 )
 
 // compare returns -1, 0 or 1 ordering k against o.
@@ -137,7 +170,20 @@ func packVersion(epoch part.BigInt, release []part.BigInt, pre, post, dev letter
 	if local != "" {
 		return k, false
 	}
-	if e, ok := smallUint(epoch, 0); !ok || e != 0 {
+	// The packed layout has no epoch field, so only epoch 0 may pack. This is
+	// deliberately a direct sign check rather than smallUint(epoch, 0): with a
+	// limit of 0 the value clause of that idiom is unreachable, and it would
+	// read as if something other than the limit were rejecting "1!".
+	if bi := big.Int(epoch); bi.Sign() != 0 {
+		return k, false
+	}
+	// Parse never produces an empty release -- the grammar requires [0-9]+ --
+	// so an empty one means a zero-value Version, which must sort BELOW every
+	// real version (see Compare). Packing it would give it exactly version
+	// "0"'s key. Today no zero-value Version reaches here (Parse is the only
+	// constructor that packs), but the invariant belongs to the packer, not
+	// to whoever calls it next.
+	if len(release) == 0 {
 		return k, false
 	}
 
@@ -217,11 +263,11 @@ func packVersion(epoch part.BigInt, release []part.BigInt, pre, post, dev letter
 		}
 	}
 
-	k.w3 = preClass<<(packedPreNBits+1+packedPostBits+1+packedDevBits) |
-		preN<<(1+packedPostBits+1+packedDevBits) |
-		postFlag<<(packedPostBits+1+packedDevBits) |
-		postN<<(1+packedDevBits) |
-		devAbsent<<packedDevBits |
-		devN
+	k.w3 = preClass<<packedPreClassShift |
+		preN<<packedPreNShift |
+		postFlag<<packedPostFlagShift |
+		postN<<packedPostNShift |
+		devAbsent<<packedDevFlagShift |
+		devN<<packedDevNShift
 	return k, true
 }

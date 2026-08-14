@@ -3,7 +3,10 @@
 package version
 
 import (
+	"math/rand"
+
 	"fmt"
+	"github.com/rstudio/go-version/pkg/part"
 	"sort"
 	"sync"
 	"testing"
@@ -25,11 +28,16 @@ func compareSlow(a, b Version) int {
 // enforces that. If you extend the grid, regenerate the fixture (see that
 // test's doc comment) with pypa/packaging 26.2 or newer.
 func gridStrings() []string {
-	epochs := []string{"", "1!"}
+	// "0!" is an explicitly written zero epoch: it must pack (and order
+	// identically to the same version without it). The two trailing-zero
+	// releases below the 7-segment one exercise the strip-then-count order in
+	// packVersion: more than 6 written segments that strip back into range.
+	epochs := []string{"", "0!", "1!"}
 	releases := []string{
 		"0", "1", "1.0", "1.0.0.0", "1.00", "1.2", "1.2.1", "0.0.1",
 		"2.31.0.20240406", "2024.1", "20240101.0", "1.2.3.4.5.6",
-		"1.2.3.4.5.6.7", "4294967295.1", "4294967296.1", "1.4294967295",
+		"1.2.3.4.5.6.7", "1.2.3.4.5.6.0.0", "1.2.3.4.5.0.0",
+		"4294967295.1", "4294967296.1", "1.4294967295",
 		"1.4294967296", "99999999999999999999.0", "1.99999999999999999999",
 	}
 	pres := []string{"", "a", "a0", "a1", "b1", "rc1", "rc2", "pre1", "c3",
@@ -71,33 +79,43 @@ func gridVersions(tb testing.TB) []Version {
 }
 
 // TestPackedAgreesWithSlowPath compares pairs from the grid through both
-// paths. The packed path only claims pairs where both sides are packable; for
-// those it must agree exactly with the general path.
+// paths and requires exact agreement.
 //
-// The full grid is 204,288 versions; all pairs would be ~4.2e10 comparisons.
-// A deterministic stride keeps every grid dimension represented while
-// holding the pair count around 2.4 million, which runs in seconds.
+// Only a PACKABLE x PACKABLE pair actually discriminates the two encodings:
+// for any pair with an unpackable side, Compare and compareSlow run the same
+// code and the assertion is x == x. So the sample is drawn packable-first --
+// the packable subset carries the information -- topped up with unpackable
+// versions to exercise the boundary and the mixed-pair fallback.
+//
+// Sampling is a seeded SHUFFLE, not a stride. The grid is a nested cross
+// product, so any fixed stride whose gcd with an inner dimension's period
+// exceeds 1 silently collapses that dimension: at 204,288 versions the old
+// stride of 132 shared a factor of 4 with the 8-value locals dimension and
+// sampled only 2 of its 8 values. A shuffle has no phase to lock onto.
 func TestPackedAgreesWithSlowPath(t *testing.T) {
 	full := gridVersions(t)
-	stride := len(full)/1550 + 1
-	var vs []Version
-	for i := 0; i < len(full); i += stride {
-		vs = append(vs, full[i])
-	}
-	t.Logf("grid: %d versions, sampled %d", len(full), len(vs))
-	packable := 0
-	for _, v := range vs {
+	rng := rand.New(rand.NewSource(1))
+	rng.Shuffle(len(full), func(i, j int) { full[i], full[j] = full[j], full[i] })
+
+	var packables, unpackables []Version
+	for _, v := range full {
 		if v.packable {
-			packable++
+			packables = append(packables, v)
+		} else {
+			unpackables = append(unpackables, v)
 		}
 	}
-	t.Logf("packable: %d/%d", packable, len(vs))
-	if packable == 0 {
+	if len(packables) == 0 {
 		t.Fatal("no packable versions in grid; the fast path is untested")
 	}
-	if packable == len(vs) {
+	if len(unpackables) == 0 {
 		t.Fatal("every grid version is packable; the fallback boundary is untested")
 	}
+
+	vs := append([]Version{}, packables[:min(1200, len(packables))]...)
+	vs = append(vs, unpackables[:min(400, len(unpackables))]...)
+	t.Logf("grid: %d versions (%d packable); sampled %d packable + %d unpackable",
+		len(full), len(packables), min(1200, len(packables)), min(400, len(unpackables)))
 
 	mismatches := 0
 	for i := range vs {
@@ -126,6 +144,9 @@ func TestPackedLimits(t *testing.T) {
 	}{
 		{"1.2.3", true},
 		{"0", true},
+		{"0!1.2.3", true},         // a WRITTEN zero epoch packs
+		{"1.2.3.4.5.6.0.0", true}, // 8 written segments strip to 6
+		{"1.2.3.4.5.0.0", true},   // 7 written segments strip to 5
 		{"1.0a", true},
 		{"1.0rc1", true},
 		{"1.0.post1", true},
@@ -150,6 +171,19 @@ func TestPackedLimits(t *testing.T) {
 		if v.packable != c.want {
 			t.Errorf("packable(%q) = %v, want %v", c.v, v.packable, c.want)
 		}
+	}
+}
+
+// TestPackVersionRefusesEmptyRelease pins the packer-local invariant: an
+// empty release means a zero-value Version, which must sort below every real
+// version, and packing it would instead give it version "0"'s key. Parse is
+// currently the only caller and never passes one, so this can only be tested
+// by calling the packer directly -- which is the point: the invariant must
+// not depend on who calls it next.
+func TestPackVersionRefusesEmptyRelease(t *testing.T) {
+	var ln letterNumber
+	if _, ok := packVersion(part.BigInt{}, nil, ln, ln, ln, ""); ok {
+		t.Fatal("packVersion packed an empty release; a zero-value Version would compare equal to version 0")
 	}
 }
 

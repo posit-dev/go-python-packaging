@@ -5,6 +5,7 @@ package version
 import (
 	"bufio"
 	"compress/gzip"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,7 +29,7 @@ import (
 //
 //   - pypa-26.2-grid.ranked.gz: the exact output of gridStrings() -- every
 //     combination of the packed fields at and across each field's
-//     packability limit (204,288 versions). Set equality with gridStrings()
+//     packability limit (338,688 versions). Set equality with gridStrings()
 //     is asserted, so extending the grid without regenerating the fixture
 //     fails loudly.
 //   - pypa-26.2-corpus-sample.ranked.gz: 10,064 unique version strings
@@ -56,8 +57,10 @@ import (
 //
 // The checks: every fixture string must parse; every ADJACENT pair in rank
 // order must compare consistently with its ranks (full coverage of the
-// order, catching local misorderings anywhere); and every pair of a strided
-// sample must too (catching long-range and transitivity-breaking errors).
+// order, catching local misorderings anywhere); and every pair of a
+// seeded-shuffle sample must too (catching long-range and transitivity-
+// breaking errors). The sample is a shuffle rather than a stride so it
+// cannot phase-lock onto any periodic structure in the fixture's order.
 func TestPackedConformanceFixtures(t *testing.T) {
 	grid := readRankedFixture(t, "pypa-26.2-grid.ranked.gz")
 
@@ -164,9 +167,14 @@ func checkAgainstRanks(t *testing.T, name string, es []rankedVersion) {
 		}
 	}
 
-	stride := len(es)/1200 + 1
-	var sample []rankedVersion
-	for i := 0; i < len(es); i += stride {
+	idx := make([]int, len(es))
+	for i := range idx {
+		idx[i] = i
+	}
+	rng := rand.New(rand.NewSource(1))
+	rng.Shuffle(len(idx), func(i, j int) { idx[i], idx[j] = idx[j], idx[i] })
+	sample := make([]rankedVersion, 0, 1200)
+	for _, i := range idx[:min(1200, len(idx))] {
 		sample = append(sample, es[i])
 	}
 	for i := range sample {

@@ -314,6 +314,17 @@ func cmpkey(epoch part.BigInt, release []part.BigInt, pre, post, dev letterNumbe
 // returns -1, 0, or 1 if this version is smaller, equal,
 // or larger than the other version, respectively.
 func (v Version) Compare(other Version) int {
+	return compareVersions(&v, &other)
+}
+
+// compareVersions is Compare's whole implementation, on pointers. Version is
+// a large struct (~392 bytes), so internal callers that already hold two
+// Versions in a slice -- SortedVersions.Less above all, which sits inside
+// sort's O(n log n) comparison loop -- go through this directly rather than
+// copying both structs per comparison just to read a 33-byte packed key.
+// It never writes through either pointer; that read-only property is what
+// keeps a parsed Version safely shareable across goroutines (see padParts).
+func compareVersions(v, other *Version) int {
 	// The packed fast path: when both versions carry a packed key, a few
 	// integer comparisons decide the whole ordering. The packed key is a
 	// complete encoding of the comparison key for packable versions -- see
@@ -609,10 +620,10 @@ func (s SortedVersions) Len() int {
 	return len(s)
 }
 func (s SortedVersions) Less(i, j int) bool {
-	a := s[i]
-	b := s[j]
-
-	return a.LessThan(b)
+	// Compare through pointers: this sits inside sort's comparison loop, and
+	// going through the value-receiver methods would copy four ~392-byte
+	// structs per comparison to read 33 bytes of packed key.
+	return compareVersions(&s[i], &s[j]) < 0
 }
 func (s SortedVersions) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]

@@ -19,13 +19,18 @@ mistaken for a safe patch upgrade.
   per call before). Versions that do not fit the packed layout — nonzero
   epoch, a local label, more than 6 release segments after trailing-zero
   stripping, a release segment ≥ 2^32, or an unusually large pre/post/dev
-  number — fall back to the general path and are compared exactly as before.
+  number — fall back to the general path, whose ordering is unchanged.
   Against the production PyPI index (7,666,849 version occurrences), 97.26%
-  of versions pack. Measured end to end on go-pyresolver's resolver
+  of versions pack. One cost is scoped to unpackable versions (in practice:
+  local-labeled ones, which PyPI itself rejects on upload but private
+  indexes may carry): comparing an EQUAL pair of them is somewhat slower
+  than before, because the general path no longer short-circuits equality
+  by rendering both sides to strings (see the next entry) and now pads
+  release segments into a fresh slice (see Fixed below). Measured end to end on go-pyresolver's resolver
   benchmark: 2.1–5.2x faster warm resolutions, 3.1–11.8x cold.
 
   Ordering is pinned to the reference implementation in CI: fixtures ranked
-  by pypa/packaging 26.2 — a 204,288-version generated grid crossing every
+  by pypa/packaging 26.2 — a 338,688-version generated grid crossing every
   packed-field limit, plus 10,064 unique versions sampled from the
   production PyPI index — must agree with `Compare` exactly, on top of the
   existing PEP 440 conformance tables.

@@ -9,7 +9,7 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
-### Changed
+### Notes
 
 - `version`: `Compare` (and everything built on it: `Equal`, `LessThan`,
   `SortedVersions`, specifier evaluation) is dramatically faster for typical

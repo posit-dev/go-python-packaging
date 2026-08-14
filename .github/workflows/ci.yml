@@ -22,6 +22,12 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test ./...
+      - name: Test (race)
+        # Not redundant with the step above: TestCompareSharedVersionCopiesRace
+        # guards the "a parsed Version is safe to share across goroutines"
+        # guarantee and only fails under the race detector. Without this step a
+        # revert of padParts back to the in-place Parts.Padding would pass CI.
+        run: go test -race ./...
       - name: Format check
         run: |
           unformatted=$(gofmt -l .)

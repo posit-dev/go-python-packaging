@@ -74,7 +74,7 @@ func gridVersions(tb testing.TB) []Version {
 // paths. The packed path only claims pairs where both sides are packable; for
 // those it must agree exactly with the general path.
 //
-// The full grid is 153,216 versions; all pairs would be 2.3e10 comparisons.
+// The full grid is 204,288 versions; all pairs would be ~4.2e10 comparisons.
 // A deterministic stride keeps every grid dimension represented while
 // holding the pair count around 2.4 million, which runs in seconds.
 func TestPackedAgreesWithSlowPath(t *testing.T) {

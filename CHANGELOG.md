@@ -21,7 +21,20 @@ mistaken for a safe patch upgrade.
   stripping, a release segment ≥ 2^32, or an unusually large pre/post/dev
   number — fall back to the general path, whose ordering is unchanged.
   Against the production PyPI index (7,666,849 version occurrences), 97.26%
-  of versions pack. One cost is scoped to unpackable versions (in practice:
+  of versions pack.
+
+  Packing was chosen over the two cheaper remedies after measuring all
+  three independently on the same benchmark: removing the
+  `reflect.DeepEqual` pre-check inside go-version's `Parts.Compare` is
+  worth 1.39–2.05x warm on its own, removing this package's
+  `String() == String()` fast path 1.18–1.51x, and both together
+  1.70–3.45x — while the packed key alone reaches 2.1–5.2x and, measured
+  combined with the `DeepEqual` removal, gains nothing further, because
+  packable pairs never reach `Parts.Compare` at all. The `DeepEqual`
+  removal therefore stays out of this module (it belongs to
+  rstudio/go-version); the fast-path removal ships here (next entry).
+
+  One cost is scoped to unpackable versions (in practice:
   local-labeled ones, which PyPI itself rejects on upload but private
   indexes may carry): comparing an EQUAL pair of them is somewhat slower
   than before, because the general path no longer short-circuits equality

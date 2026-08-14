@@ -63,17 +63,26 @@ func TestPackedConformanceFixtures(t *testing.T) {
 
 	// The grid fixture must describe exactly the strings gridStrings()
 	// generates: no more (stale fixture), no fewer (unranked grid entries).
+	// Both directions are asserted explicitly, and duplicates rejected --
+	// a count comparison alone would let a fixture with duplicates mask
+	// missing boundary entries.
 	want := map[string]bool{}
 	for _, s := range gridStrings() {
 		want[s] = true
 	}
-	if len(grid) != len(want) {
-		t.Errorf("grid fixture has %d entries, gridStrings() generates %d unique; regenerate the fixture",
-			len(grid), len(want))
-	}
+	seen := make(map[string]bool, len(grid))
 	for _, e := range grid {
+		if seen[e.s] {
+			t.Fatalf("grid fixture entry %q is duplicated; regenerate the fixture", e.s)
+		}
+		seen[e.s] = true
 		if !want[e.s] {
 			t.Fatalf("grid fixture entry %q is not produced by gridStrings(); regenerate the fixture", e.s)
+		}
+	}
+	for s := range want {
+		if !seen[s] {
+			t.Fatalf("gridStrings() generates %q but the fixture does not rank it; regenerate the fixture", s)
 		}
 	}
 

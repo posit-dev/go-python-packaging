@@ -322,10 +322,15 @@ func (v Version) Compare(other Version) int {
 		return v.packed.compare(other.packed)
 	}
 
-	// A quick, efficient equality check
-	if v.String() == other.String() {
-		return 0
-	}
+	// There is deliberately NO String()==String() equality fast path here.
+	// It rendered both sides to fresh strings on every call -- two
+	// bytes.Buffer round trips through fmt -- and with the packed path in
+	// place it could only ever serve pairs where at least one side is
+	// unpackable. For those pairs the key comparison below returns 0 for
+	// exactly the same inputs, without the two allocations. Removing it was
+	// measured alone (against go-pyresolver's resolver benchmark, production
+	// snapshot) at 1.18-1.51x warm, and is pure simplification once the
+	// packed key exists.
 
 	// ⚠️ An uninitialized Version cannot go through key comparison at all. Its
 	// key's pre/post/dev/local are NIL Part interfaces, and go-version's
@@ -441,8 +446,10 @@ func (v Version) String() string {
 	// *recovers* it: `fmt.Errorf("%s", v)` yields a message containing
 	// "%!s(PANIC=String method: ...)" and reports no error, so the bug is
 	// swallowed at exactly the call sites most likely to hit it. A direct call
-	// crashes instead. Compare() also calls String() as its fast path, so this
-	// one line is what made all six comparison methods panic as well.
+	// crashes instead. (Compare() historically called String() as its fast
+	// path, which is how this one line once made all six comparison methods
+	// panic as well; that fast path is gone, but the guard here still matters
+	// for every direct rendering call.)
 	writeRelease(&buf, v.release)
 
 	// Pre-release

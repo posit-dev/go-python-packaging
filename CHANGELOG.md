@@ -9,13 +9,15 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-14
+
 ### Added
 
 - `version`: `Version.ReleaseKey()` and the `ReleaseKey` type, for consumers
-  that need to group or bracket versions by their **release** — the epoch and
+  that need to order or partition versions by their **release** — the epoch and
   the release segments with trailing zeros stripped — ignoring the
   pre/post/dev/local suffix. `ReleaseKey.Compare` orders two keys, and
-  `ReleaseKey.String` renders the smallest version string carrying a key.
+  `ReleaseKey.String` renders a key in canonical shortest form.
 
   Until now the only way to reach a version's release from outside this
   package was `BaseVersion()`, which renders the version back to text (a
@@ -1009,7 +1011,8 @@ Initial release. One module, one package per PEP concern:
 - `license/` — PyPI classifier standardization, SPDX expression parsing, and top-level
   license derivation.
 
-[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.3.1...v0.4.0

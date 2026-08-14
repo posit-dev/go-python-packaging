@@ -9,6 +9,44 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Changed
+
+- `version`: `Compare` (and everything built on it: `Equal`, `LessThan`,
+  `SortedVersions`, specifier evaluation) is dramatically faster for typical
+  versions. A fixed-size integer comparison key is computed once at `Parse`
+  time; when both versions carry one, comparison is a handful of integer
+  compares with zero allocations (~15 ns vs ~2.3–2.9 µs and 25–28 allocations
+  per call before). Versions that do not fit the packed layout — nonzero
+  epoch, a local label, more than 6 release segments after trailing-zero
+  stripping, a release segment ≥ 2^32, or an unusually large pre/post/dev
+  number — fall back to the general path and are compared exactly as before.
+  Against the production PyPI index (7,666,849 version occurrences), 97.26%
+  of versions pack. Measured end to end on go-pyresolver's resolver
+  benchmark: 2.1–5.2x faster warm resolutions, 3.1–11.8x cold.
+
+  Ordering is pinned to the reference implementation in CI: fixtures ranked
+  by pypa/packaging 26.2 — a 204,288-version generated grid crossing every
+  packed-field limit, plus 10,064 unique versions sampled from the
+  production PyPI index — must agree with `Compare` exactly, on top of the
+  existing PEP 440 conformance tables.
+
+- `version`: `Compare` no longer renders both versions to strings as an
+  equality fast path. With the packed key in place that check could only
+  serve pairs where at least one side is unpackable, and the key comparison
+  answers those without the two allocations. Measured alone it was worth
+  1.18–1.51x warm on the resolver benchmark; with the packed key it is
+  subsumed.
+
+### Fixed
+
+- `version`: comparing by-value copies of one `Version` from two goroutines
+  was a data race. go-version's `Parts.Normalize` leaves spare capacity on
+  the comparison key's release slice and `Parts.Padding` appended into it in
+  place, so copies shared — and wrote to — one backing array. `Compare` now
+  pads into a fresh slice, making it read-only on both receivers: a parsed
+  `Version` is now safe to share across goroutines. (The underlying
+  `rstudio/go-version` behaviour is unchanged; this fix sidesteps it.)
+
 ## [0.5.0] - 2026-08-10
 
 ### Fixed

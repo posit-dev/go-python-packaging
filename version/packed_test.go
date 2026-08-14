@@ -17,9 +17,14 @@ func compareSlow(a, b Version) int {
 	return a.Compare(b)
 }
 
-// gridVersions is a structured grid covering every packed field, its limits,
+// gridStrings is a structured grid covering every packed field, its limits,
 // and the fallback boundary on both sides.
-func gridVersions(tb testing.TB) []Version {
+//
+// ⚠️ This generator and the frozen fixture testdata/pypa-26.2-grid.ranked.gz
+// must describe the same set of strings; TestPackedConformanceFixtures
+// enforces that. If you extend the grid, regenerate the fixture (see that
+// test's doc comment) with pypa/packaging 26.2 or newer.
+func gridStrings() []string {
 	epochs := []string{"", "1!"}
 	releases := []string{
 		"0", "1", "1.0", "1.0.0.0", "1.00", "1.2", "1.2.1", "0.0.1",
@@ -33,26 +38,34 @@ func gridVersions(tb testing.TB) []Version {
 		".post16384", ".post20240101"}
 	devs := []string{"", ".dev", ".dev0", ".dev1", ".dev20240101",
 		".dev33554431", ".dev33554432"}
-	locals := []string{"", "+abc", "+1", "+abc.1", "+ubuntu-2", "+007"}
+	locals := []string{"", "+abc", "+1", "+abc.1", "+ubuntu-2", "+007", "+abc.10", "+abc.2"}
 
-	var out []Version
+	var out []string
 	for _, e := range epochs {
 		for _, r := range releases {
 			for _, p := range pres {
 				for _, po := range posts {
 					for _, d := range devs {
 						for _, l := range locals {
-							s := e + r + p + po + d + l
-							v, err := Parse(s)
-							if err != nil {
-								tb.Fatalf("grid version %q failed to parse: %v", s, err)
-							}
-							out = append(out, v)
+							out = append(out, e+r+p+po+d+l)
 						}
 					}
 				}
 			}
 		}
+	}
+	return out
+}
+
+func gridVersions(tb testing.TB) []Version {
+	strs := gridStrings()
+	out := make([]Version, 0, len(strs))
+	for _, s := range strs {
+		v, err := Parse(s)
+		if err != nil {
+			tb.Fatalf("grid version %q failed to parse: %v", s, err)
+		}
+		out = append(out, v)
 	}
 	return out
 }

@@ -50,6 +50,13 @@ tags/testdata/gen_goldens.py, which drives packaging.tags directly. They are
 generated output rather than ported source, but the ordering they record is
 pypa/packaging's.
 
+The version/ package's frozen conformance fixtures
+(version/testdata/*.ranked.gz) record the total order pypa/packaging 26.2
+assigns to version strings, produced by sorting with packaging.version.Version
+directly (the generation recipe is in the fixture test's doc comment). They
+are generated output rather than ported source, but the ordering they record
+is pypa/packaging's.
+
 The tags/ package's embedded data/distro_baselines.json records the libc version
 well-known Linux distribution releases ship. Those version numbers originate in
 the distributions' own package repositories and were read through Repology's

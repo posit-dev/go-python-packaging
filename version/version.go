@@ -62,6 +62,13 @@ type Version struct {
 	local    string
 	key      key
 	original string
+
+	// packed is a fixed-size integer encoding of key, valid when packable is
+	// true. See packed.go. Compare uses it to order two packable versions
+	// with a handful of integer comparisons instead of the allocating
+	// interface-driven path through key.
+	packed   packedKey
+	packable bool
 }
 
 type key struct {
@@ -236,6 +243,8 @@ func Parse(v string) (Version, error) {
 		number: devN,
 	}
 
+	packed, packable := packVersion(epoch, release, pre, post, dev, local)
+
 	return Version{
 		epoch:    epoch,
 		release:  release,
@@ -245,6 +254,8 @@ func Parse(v string) (Version, error) {
 		local:    local,
 		key:      cmpkey(epoch, release, pre, post, dev, local),
 		original: v,
+		packed:   packed,
+		packable: packable,
 	}, nil
 }
 
@@ -303,10 +314,34 @@ func cmpkey(epoch part.BigInt, release []part.BigInt, pre, post, dev letterNumbe
 // returns -1, 0, or 1 if this version is smaller, equal,
 // or larger than the other version, respectively.
 func (v Version) Compare(other Version) int {
-	// A quick, efficient equality check
-	if v.String() == other.String() {
-		return 0
+	return compareVersions(&v, &other)
+}
+
+// compareVersions is Compare's whole implementation, on pointers. Version is
+// a large struct (~392 bytes), so internal callers that already hold two
+// Versions in a slice -- SortedVersions.Less above all, which sits inside
+// sort's O(n log n) comparison loop -- go through this directly rather than
+// copying both structs per comparison just to read a 33-byte packed key.
+// It never writes through either pointer; that read-only property is what
+// keeps a parsed Version safely shareable across goroutines (see padParts).
+func compareVersions(v, other *Version) int {
+	// The packed fast path: when both versions carry a packed key, a few
+	// integer comparisons decide the whole ordering. The packed key is a
+	// complete encoding of the comparison key for packable versions -- see
+	// packed.go -- so this needs no fallback tie-break.
+	if v.packable && other.packable {
+		return v.packed.compare(other.packed)
 	}
+
+	// There is deliberately NO String()==String() equality fast path here.
+	// It rendered both sides to fresh strings on every call -- two
+	// bytes.Buffer round trips through fmt -- and with the packed path in
+	// place it could only ever serve pairs where at least one side is
+	// unpackable. For those pairs the key comparison below returns 0 for
+	// exactly the same inputs, without the two allocations. Removing it was
+	// measured alone (against go-pyresolver's resolver benchmark, production
+	// snapshot) at 1.18-1.51x warm, and is pure simplification once the
+	// packed key exists.
 
 	// ⚠️ An uninitialized Version cannot go through key comparison at all. Its
 	// key's pre/post/dev/local are NIL Part interfaces, and go-version's
@@ -346,11 +381,33 @@ func (v Version) Compare(other Version) int {
 	// real.Compare(Version{}) dereferenced a nil part and crashed while
 	// Version{}.Compare(real) returned -1, because only the k1 side was ever
 	// actually padded. That asymmetry is the tell.
+	// ⚠️ padParts, not Parts.Padding. go-version v0.0.2's Parts.Normalize
+	// reslices (ret = ret[:i]) leaving len < cap, and Parts.Padding appends
+	// into that spare capacity IN PLACE -- so a by-value copy of a Version
+	// shares a backing array with its original, and two goroutines comparing
+	// copies of the same version race on it. Padding into a fresh slice makes
+	// Compare read-only on both receivers, which is what lets a Version be
+	// shared across goroutines.
 	n := max(len(k1.release), len(k2.release))
-	k1.release = k1.release.Padding(n, part.Zero)
-	k2.release = k2.release.Padding(n, part.Zero)
+	k1.release = padParts(k1.release, n)
+	k2.release = padParts(k2.release, n)
 
 	return k1.compare(k2)
+}
+
+// padParts returns parts extended with part.Zero to size elements, never
+// writing through parts' own backing array. See the caller for why appending
+// in place (Parts.Padding) is a data race.
+func padParts(parts part.Parts, size int) part.Parts {
+	if len(parts) >= size {
+		return parts
+	}
+	padded := make(part.Parts, size)
+	copy(padded, parts)
+	for i := len(parts); i < size; i++ {
+		padded[i] = part.Zero
+	}
+	return padded
 }
 
 // Equal tests if two versions are equal.
@@ -400,8 +457,10 @@ func (v Version) String() string {
 	// *recovers* it: `fmt.Errorf("%s", v)` yields a message containing
 	// "%!s(PANIC=String method: ...)" and reports no error, so the bug is
 	// swallowed at exactly the call sites most likely to hit it. A direct call
-	// crashes instead. Compare() also calls String() as its fast path, so this
-	// one line is what made all six comparison methods panic as well.
+	// crashes instead. (Compare() historically called String() as its fast
+	// path, which is how this one line once made all six comparison methods
+	// panic as well; that fast path is gone, but the guard here still matters
+	// for every direct rendering call.)
 	writeRelease(&buf, v.release)
 
 	// Pre-release
@@ -561,10 +620,10 @@ func (s SortedVersions) Len() int {
 	return len(s)
 }
 func (s SortedVersions) Less(i, j int) bool {
-	a := s[i]
-	b := s[j]
-
-	return a.LessThan(b)
+	// Compare through pointers: this sits inside sort's comparison loop, and
+	// going through the value-receiver methods would copy four ~392-byte
+	// structs per comparison to read 33 bytes of packed key.
+	return compareVersions(&s[i], &s[j]) < 0
 }
 func (s SortedVersions) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]

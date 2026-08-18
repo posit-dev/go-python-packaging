@@ -169,6 +169,34 @@ func TestTypesFreeformTierIsLast(t *testing.T) {
 		assert.Equal(t, []string{"BSD-3-Clause"}, got)
 	})
 
+	// A classifier SPDX has no identifier for still says something. It reaches
+	// the free-form tier looking identical to a package that declared nothing,
+	// because both collapse to Unknown -- so the tier must be suppressed by the
+	// presence of the classifier, not by the value it mapped to.
+	t.Run("unmappable-classifier-still-suppresses-freeform", func(t *testing.T) {
+		for _, classifier := range []string{
+			"License :: Other/Proprietary License",
+			"License :: Free for non-commercial use",
+			"License :: Free To Use But Restricted",
+			"License :: Free For Home Use",
+			"License :: Freeware",
+			// Open source, but the version is ambiguous, so it does not map.
+			// A free-form MIT here contradicts the classifier just as plainly.
+			"License :: OSI Approved :: GNU General Public License (GPL)",
+		} {
+			got := Types("", []string{classifier}, "MIT")
+			assert.Equal(t, []string{LicenseUnknown}, got,
+				"%q must not be overruled by a free-form MIT", classifier)
+		}
+	})
+
+	// The bare umbrella names no license, so it is a missing declaration rather
+	// than an unknown one, and must not suppress the tier.
+	t.Run("bare-osi-umbrella-does-not-suppress-freeform", func(t *testing.T) {
+		got := Types("", []string{"License :: OSI Approved"}, "MIT")
+		assert.Equal(t, []string{"MIT"}, got)
+	})
+
 	t.Run("freeform-runs-when-nothing-structured", func(t *testing.T) {
 		assert.Equal(t, []string{"MIT"}, Types("", nil, "MIT"))
 	})

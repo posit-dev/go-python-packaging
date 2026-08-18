@@ -60,9 +60,20 @@ func Types(expression string, classifiers []string, license string) []string {
 	if !isUnknownTypes(types) {
 		return types
 	}
-	// Priority 3: the legacy freeform License field, when it is unambiguous
-	if fromText := typesFromLicenseText(license); len(fromText) > 0 {
-		return fromText
+	// Priority 3: the legacy freeform License field, when it is unambiguous.
+	//
+	// Only when the package declared nothing structured at all. A classifier
+	// that SPDX has no identifier for still SAYS something -- "License ::
+	// Other/Proprietary License" is a positive statement that the package is
+	// proprietary -- and it reaches this point looking identical to a package
+	// that declared no license, because both collapse to Unknown. Consulting
+	// the free-form field there would let a stray "MIT" overrule an explicit
+	// declaration to the contrary, which is the one outcome this derivation
+	// must never produce.
+	if !declaresLicenseClassifier(classifiers) {
+		if fromText := typesFromLicenseText(license); len(fromText) > 0 {
+			return fromText
+		}
 	}
 	// Priority 4: unknown, as returned by the classifier tier
 	return types
@@ -77,6 +88,21 @@ func isUnknownTypes(types []string) bool {
 	return len(types) == 1 && types[0] == LicenseUnknown
 }
 
+// declaresLicenseClassifier reports whether the package carries a "License ::"
+// classifier that says something about its license.
+//
+// The bare "License :: OSI Approved" umbrella does not count: it names no
+// license, and StandardizeLicensePyPIClassifiers already treats it as a missing
+// declaration rather than an unknown one.
+func declaresLicenseClassifier(classifiers []string) bool {
+	for _, name := range GetLicensesFromPyPIClassifiers(classifiers) {
+		if name != "OSI Approved" {
+			return true
+		}
+	}
+	return false
+}
+
 // typesFromLicenseText returns SPDX ids derived from the legacy free-form
 // License field, or nil when the text cannot be resolved to KNOWN ids.
 //
@@ -85,7 +111,13 @@ func isUnknownTypes(types []string) bool {
 // OUT of Unknown and never onto a wrong id.
 //
 // ⚠️ The governing rule is that ONE unrecognized token rejects the WHOLE field.
-// That is what makes it impossible to invent a license here. ParseSPDXExpression
+// That is what makes it impossible to derive a license from an UNRECOGNIZED
+// token. It is not a guarantee that a recognized token was meant as an SPDX
+// identifier: SPDX publishes ~120 single-word identifiers, several of which are
+// ordinary words or company names, so a package from Intel whose License field
+// reads "Intel" resolves to the Intel Open Source License. Widening what counts
+// as recognized widens that exposure; weigh it against the volume the widening
+// actually buys. ParseSPDXExpression
 // does not validate -- it strips operators and hands back whatever tokens are
 // left -- so "3-Clause BSD License" tokenizes to `3-Clause` / `BSD` / `License`,
 // and accepting the recognizable-looking part of that would attribute BSD-3-Clause

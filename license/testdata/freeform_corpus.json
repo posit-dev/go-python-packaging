@@ -1,0 +1,1764 @@
+{
+  "source": "bigquery-public-data.pypi.distribution_metadata, captured 2026-08-18",
+  "captured": "2026-08-18",
+  "coverage": "the 250 highest-volume of 17846 distinct free-form strings; 1533511 of 1745000 (name, version) pairs (87.9%)",
+  "notes": [
+    "Real values of the legacy free-form `License:` field on PyPI, ranked by how many (name, version) pairs carry them, with the SPDX types Types() derives from each. This is a REGRESSION FIXTURE, not a specification: every non-Unknown row is a claim about a real package's license and must be reviewed by a human when it changes.",
+    "Rows longer than license.TextDumpMaxLen are excluded: they are license-text dumps, which the derivation refuses to tokenize at all. The in-code tests cover that case directly.",
+    "Over the WHOLE corpus (not just these rows) the derivation accepts 843695 of 1745000 versions (48.35%); these rows carry 836878 of those accepted versions.",
+    "`versions` is recorded so a reviewer can see what a row is worth. Nothing asserts on it."
+  ],
+  "cases": [
+    {
+      "license": "MIT",
+      "versions": 600772,
+      "want": [
+        "MIT"
+      ]
+    },
+    {
+      "license": "Apache-2.0",
+      "versions": 167432,
+      "want": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "license": "UNKNOWN",
+      "versions": 69824,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache 2.0",
+      "versions": 63176,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache License 2.0",
+      "versions": 57107,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD",
+      "versions": 44585,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT License",
+      "versions": 40663,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL",
+      "versions": 31081,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPLv3",
+      "versions": 23697,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache 2",
+      "versions": 22314,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Proprietary",
+      "versions": 19257,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD-3-Clause",
+      "versions": 18546,
+      "want": [
+        "BSD-3-Clause"
+      ]
+    },
+    {
+      "license": "Apache License, Version 2.0",
+      "versions": 16170,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPLv2+",
+      "versions": 12789,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LICENSE.txt",
+      "versions": 12434,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT Licence",
+      "versions": 11551,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL-3.0",
+      "versions": 9769,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LICENSE",
+      "versions": 9444,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache",
+      "versions": 9381,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL",
+      "versions": 8974,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "ASL",
+      "versions": 8356,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "AGPL-3.0",
+      "versions": 8223,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 3-Clause License",
+      "versions": 7172,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "mit",
+      "versions": 6922,
+      "want": [
+        "MIT"
+      ]
+    },
+    {
+      "license": "GPL-3.0-or-later",
+      "versions": 6845,
+      "want": [
+        "GPL-3.0-or-later"
+      ]
+    },
+    {
+      "license": "Apache License Version 2.0",
+      "versions": 6602,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT license",
+      "versions": 6258,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD License",
+      "versions": 5686,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache Software License",
+      "versions": 4924,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache License",
+      "versions": 4651,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL3",
+      "versions": 4597,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License v3.0",
+      "versions": 4514,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 3-Clause",
+      "versions": 3831,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPLv2",
+      "versions": 3748,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT OR Apache-2.0",
+      "versions": 3732,
+      "want": [
+        "MIT",
+        "Apache-2.0"
+      ]
+    },
+    {
+      "license": "GNU GPLv3",
+      "versions": 3691,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU",
+      "versions": 3589,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL2",
+      "versions": 3346,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPLv3+",
+      "versions": 3205,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "apache-2.0",
+      "versions": 3122,
+      "want": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "license": "MPL-2.0",
+      "versions": 3070,
+      "want": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "license": "Apache Software License 2.0",
+      "versions": 2994,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "AGPL-3.0-or-later",
+      "versions": 2878,
+      "want": [
+        "AGPL-3.0-or-later"
+      ]
+    },
+    {
+      "license": "ISC",
+      "versions": 2848,
+      "want": [
+        "ISC"
+      ]
+    },
+    {
+      "license": "AGPL",
+      "versions": 2843,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL v3",
+      "versions": 2809,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 2-Clause License",
+      "versions": 2662,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "AGPLv3",
+      "versions": 2612,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPLv3",
+      "versions": 2485,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL-3.0",
+      "versions": 2475,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "WTFPL",
+      "versions": 2427,
+      "want": [
+        "WTFPL"
+      ]
+    },
+    {
+      "license": "GPL-3.0-only",
+      "versions": 2292,
+      "want": [
+        "GPL-3.0-only"
+      ]
+    },
+    {
+      "license": "modified BSD",
+      "versions": 2259,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "The MIT License",
+      "versions": 2205,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Creative Commons Attribution-Noncommercial-Share Alike license",
+      "versions": 2133,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache2",
+      "versions": 2067,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD-3",
+      "versions": 2016,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MPLv2",
+      "versions": 1934,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "apache 3.0",
+      "versions": 1856,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD (3-clause)",
+      "versions": 1834,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "The MIT License (MIT)",
+      "versions": 1805,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "PSF",
+      "versions": 1755,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL3+",
+      "versions": 1742,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL-3.0-or-later",
+      "versions": 1734,
+      "want": [
+        "LGPL-3.0-or-later"
+      ]
+    },
+    {
+      "license": "ZPL 2.1",
+      "versions": 1632,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Elastic-2.0",
+      "versions": 1590,
+      "want": [
+        "Elastic-2.0"
+      ]
+    },
+    {
+      "license": "Creative Commons Attribution-ShareAlike 4.0 International",
+      "versions": 1519,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License v2.0 or later",
+      "versions": 1519,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "PolyForm Shield License 1.0.0, https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt",
+      "versions": 1515,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC0-1.0",
+      "versions": 1508,
+      "want": [
+        "CC0-1.0"
+      ]
+    },
+    {
+      "license": "GPL 3.0",
+      "versions": 1493,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 2-clause",
+      "versions": 1474,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache2.0",
+      "versions": 1469,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "All rights reserved",
+      "versions": 1458,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "AGPL-3.0-only",
+      "versions": 1433,
+      "want": [
+        "AGPL-3.0-only"
+      ]
+    },
+    {
+      "license": "BSD-2-Clause",
+      "versions": 1427,
+      "want": [
+        "BSD-2-Clause"
+      ]
+    },
+    {
+      "license": "BSD 3-clause",
+      "versions": 1425,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL v3",
+      "versions": 1421,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Moderne Source Available License",
+      "versions": 1402,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "http://www.apache.org/licenses/LICENSE-2.0",
+      "versions": 1382,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "https://aka.ms/azureml-sdk-license",
+      "versions": 1368,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Proprietary Software",
+      "versions": 1352,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT/Apache-2.0",
+      "versions": 1341,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache-2",
+      "versions": 1318,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 2",
+      "versions": 1302,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache Software License (Apache-2.0)",
+      "versions": 1278,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL-2.0-or-later",
+      "versions": 1254,
+      "want": [
+        "GPL-2.0-or-later"
+      ]
+    },
+    {
+      "license": "Unlicense",
+      "versions": 1214,
+      "want": [
+        "Unlicense"
+      ]
+    },
+    {
+      "license": "ZPL",
+      "versions": 1214,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "License :: OSI Approved :: MIT License",
+      "versions": 1193,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache v2",
+      "versions": 1174,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL-3",
+      "versions": 1174,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU GPL v3",
+      "versions": 1133,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MPL",
+      "versions": 1130,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "gpl",
+      "versions": 1127,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License v3 (GPLv3)",
+      "versions": 1088,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MPL2",
+      "versions": 1087,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU Affero General Public License v3",
+      "versions": 1072,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Public Domain",
+      "versions": 1066,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD3",
+      "versions": 1033,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Proprietary https://aka.ms/azureml-preview-sdk-license",
+      "versions": 1028,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "UNLICENSE",
+      "versions": 1016,
+      "want": [
+        "Unlicense"
+      ]
+    },
+    {
+      "license": "Apache 2.0 License",
+      "versions": 962,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "License :: OSI Approved :: Apache Software License",
+      "versions": 949,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache-2.0 license",
+      "versions": 935,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL-3.0 License",
+      "versions": 911,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU GENERAL PUBLIC LICENSE",
+      "versions": 909,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Salure License",
+      "versions": 906,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License",
+      "versions": 903,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT licence, see LICENCE.txt",
+      "versions": 902,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "TBD",
+      "versions": 883,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSL-1.1",
+      "versions": 849,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "UCSD",
+      "versions": 848,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Commercial",
+      "versions": 845,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LICENSE.md",
+      "versions": 831,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "General Public Licence 2",
+      "versions": 818,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "unlicensed",
+      "versions": 809,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "OSI Approved :: Apache Software License",
+      "versions": 803,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MPL 2.0",
+      "versions": 795,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "EUPL-1.2",
+      "versions": 789,
+      "want": [
+        "EUPL-1.2"
+      ]
+    },
+    {
+      "license": "Apache License v2.0",
+      "versions": 788,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache-2.0 License",
+      "versions": 782,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL v2",
+      "versions": 775,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL-2.0",
+      "versions": 774,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD-derived (http://www.repoze.org/LICENSE.txt)",
+      "versions": 772,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Private",
+      "versions": 764,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache Software License (Apache 2.0)",
+      "versions": 760,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU Lesser General Public License v3 or later (LGPLv3+)",
+      "versions": 757,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Other/Proprietary License",
+      "versions": 737,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BrynQ License",
+      "versions": 735,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache License v2",
+      "versions": 732,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU Affero General Public License, version 3.0",
+      "versions": 710,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT License, Apache License, Version 2.0",
+      "versions": 705,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU GPL",
+      "versions": 701,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "The Unlicense",
+      "versions": 693,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "None",
+      "versions": 675,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Copyright (C) 2023, Greenroom Robotics",
+      "versions": 674,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC BY-NC-SA 4.0",
+      "versions": 671,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL2.1",
+      "versions": 668,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache License (2.0)",
+      "versions": 656,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "proprietary",
+      "versions": 649,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "APACHE",
+      "versions": 633,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Closed source",
+      "versions": 626,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Mozilla Public License 2.0",
+      "versions": 623,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "AGPLv3+",
+      "versions": 614,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License (GPL)",
+      "versions": 612,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "gpl-3.0",
+      "versions": 612,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Affero General Public License v3",
+      "versions": 610,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "AGPL 3.0",
+      "versions": 607,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "\"MIT\"",
+      "versions": 585,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL 2",
+      "versions": 583,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache Licence 2.0",
+      "versions": 581,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "\"GPL-3.0\"",
+      "versions": 574,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL version 3",
+      "versions": 568,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL3.0",
+      "versions": 563,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU AFFERO GENERAL PUBLIC LICENSE",
+      "versions": 554,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL 3",
+      "versions": 554,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License v2.0",
+      "versions": 549,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL License",
+      "versions": 539,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Mozilla Public License Version 2.0 with Commons Clause",
+      "versions": 539,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CeCILL-B",
+      "versions": 538,
+      "want": [
+        "CECILL-B"
+      ]
+    },
+    {
+      "license": "GPL-3.0 license",
+      "versions": 532,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU GENERAL PUBLIC LICENSE Version 3",
+      "versions": 523,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "EULA",
+      "versions": 521,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPLv2+",
+      "versions": 513,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL V3",
+      "versions": 509,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License v3",
+      "versions": 508,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU General Public License (GPL) v3 or later",
+      "versions": 507,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CeCILL v2",
+      "versions": 505,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU Affero General Public License v3.0",
+      "versions": 491,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL-3.0-ONLY",
+      "versions": 487,
+      "want": [
+        "LGPL-3.0-only"
+      ]
+    },
+    {
+      "license": "Apache licensed, as found in the LICENSE file",
+      "versions": 481,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL-2.1",
+      "versions": 481,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LicenseRef-Proprietary",
+      "versions": 480,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL v3.0",
+      "versions": 472,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Custom Proprietary License",
+      "versions": 471,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Proprietary - IntelliStream",
+      "versions": 469,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "UNLICENSED",
+      "versions": 468,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC0",
+      "versions": 467,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": " Copyright 2021 Datalogue, Inc.",
+      "versions": 462,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPLv3+",
+      "versions": 460,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "http://www.fsf.org/licensing/licenses/agpl-3.0.html",
+      "versions": 458,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 2-Clause",
+      "versions": 456,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Free for non-commercial use",
+      "versions": 456,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC-BY-NC-4.0",
+      "versions": 453,
+      "want": [
+        "CC-BY-NC-4.0"
+      ]
+    },
+    {
+      "license": "New BSD",
+      "versions": 447,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD 3",
+      "versions": 436,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD-2",
+      "versions": 429,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Mozilla Public License Version 2.0",
+      "versions": 427,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU LGPL",
+      "versions": 417,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Non-commercial use only with mandatory attribution",
+      "versions": 417,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Quarch Technology ltd",
+      "versions": 409,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "EUPL 1.2",
+      "versions": 398,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache Licence",
+      "versions": 394,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Non commercial",
+      "versions": 392,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU AGPLv3",
+      "versions": 390,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "License GPL-2",
+      "versions": 388,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC-BY-NC-SA-4.0",
+      "versions": 387,
+      "want": [
+        "CC-BY-NC-SA-4.0"
+      ]
+    },
+    {
+      "license": "All Rights Reserved",
+      "versions": 382,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": ": OSI Approved :: MIT License",
+      "versions": 381,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC BY-SA 4.0",
+      "versions": 380,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "ASL 2.0",
+      "versions": 379,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "New BSD License",
+      "versions": 370,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC0 1.0 Universal",
+      "versions": 369,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Eclipse Public License - v1.0",
+      "versions": 364,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "License :: OSI Approved :: BSD License",
+      "versions": 362,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Applitools SDK License",
+      "versions": 358,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LICENSE.BSD3",
+      "versions": 351,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Public domain",
+      "versions": 349,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "apache2",
+      "versions": 346,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": " Copyright 2021 Datalogue, Inc.  This Datalogue SDK is licensed solely pursuant to the terms of the Master Software License executed between you as Licensee and Datalogue, Inc.  All rights reserved. ",
+      "versions": 345,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache License V2.0",
+      "versions": 344,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT-0",
+      "versions": 343,
+      "want": [
+        "MIT-0"
+      ]
+    },
+    {
+      "license": "cc-by-sa-4.0",
+      "versions": 343,
+      "want": [
+        "CC-BY-SA-4.0"
+      ]
+    },
+    {
+      "license": "PROPRIETARY",
+      "versions": 341,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Python Software Foundation License",
+      "versions": 341,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU Library or Lesser General Public License (LGPL)",
+      "versions": 340,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD-3-CLAUSE",
+      "versions": 338,
+      "want": [
+        "BSD-3-Clause"
+      ]
+    },
+    {
+      "license": "Python",
+      "versions": 338,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "3-clause BSD",
+      "versions": 332,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache v2.0",
+      "versions": 328,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "https://pypi.org/project/spiderx/",
+      "versions": 328,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "3-Clause BSD",
+      "versions": 324,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache 2 License",
+      "versions": 321,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MMB License v1.0",
+      "versions": 321,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "NVIDIA Proprietary Software",
+      "versions": 321,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Proprietary - Arcade Software License Agreement v1.0",
+      "versions": 318,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "none",
+      "versions": 316,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNUv3",
+      "versions": 312,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC-NC-ND",
+      "versions": 308,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC-BY-4.0",
+      "versions": 302,
+      "want": [
+        "CC-BY-4.0"
+      ]
+    },
+    {
+      "license": "GNU General Public License Version 3",
+      "versions": 302,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "MIT LICENSE",
+      "versions": 302,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL 2.1",
+      "versions": 294,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "BSD-3-Clause License",
+      "versions": 293,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "3 Clause BSD",
+      "versions": 291,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "CC BY-NC 4.0",
+      "versions": 290,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Cisco End User License Agreement",
+      "versions": 290,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL3",
+      "versions": 286,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Copyright © 2025 Frontmatter. All rights reserved.",
+      "versions": 284,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL v3 or later",
+      "versions": 283,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPLv2",
+      "versions": 283,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL-2.0-only",
+      "versions": 282,
+      "want": [
+        "GPL-2.0-only"
+      ]
+    },
+    {
+      "license": "0BSD",
+      "versions": 279,
+      "want": [
+        "0BSD"
+      ]
+    },
+    {
+      "license": "new BSD",
+      "versions": 279,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GNU Affero General Public License (AGPL) version 3.0",
+      "versions": 278,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "Apache License Version 2.0, January 2004 http://www.apache.org/licenses/",
+      "versions": 277,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "DSB 3-clause",
+      "versions": 277,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "GPL2.0",
+      "versions": 277,
+      "want": [
+        "Unknown"
+      ]
+    },
+    {
+      "license": "LGPL-3.0-only",
+      "versions": 275,
+      "want": [
+        "LGPL-3.0-only"
+      ]
+    }
+  ]
+}

@@ -49,7 +49,7 @@ func TestNamesAndTypes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.wantNames, Names(tc.expression, tc.classifiers, tc.license))
-			assert.Equal(t, tc.wantTypes, Types(tc.expression, tc.classifiers))
+			assert.Equal(t, tc.wantTypes, Types(tc.expression, tc.classifiers, tc.license))
 		})
 	}
 }

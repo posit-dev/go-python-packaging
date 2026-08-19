@@ -24,13 +24,27 @@ import (
 // Note: Per SPDX spec, operators AND, OR, WITH are case-sensitive (must be uppercase).
 // This parser is lenient and accepts lowercase for compatibility with real-world usage.
 func ParseSPDXExpression(expr string) []string {
+	licenses, _ := parseSPDXExpressionParts(expr)
+	return licenses
+}
+
+// parseSPDXExpressionParts is ParseSPDXExpression, additionally returning the
+// exception identifiers that followed a WITH.
+//
+// The exceptions are not part of the public result -- an exception is not a
+// license, and every caller that wants license ids wants them without it. They
+// are surfaced for the one caller that must VALIDATE the whole expression:
+// deriving types from a free-form field, where the exception is the difference
+// between "MIT" and "MIT with restrictions" and dropping it unexamined would
+// report a license the package did not grant. See typesFromLicenseText.
+func parseSPDXExpressionParts(expr string) (licenses, exceptions []string) {
 	if expr == "" {
-		return nil
+		return nil, nil
 	}
 
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
-		return nil
+		return nil, nil
 	}
 
 	tokens := tokenizeSPDX(expr)
@@ -85,9 +99,10 @@ func tokenizeSPDX(expr string) []string {
 }
 
 // extractLicenseIdentifiers extracts license identifiers from tokens,
-// filtering out operators (AND, OR, WITH) and exception identifiers.
-func extractLicenseIdentifiers(tokens []string) []string {
-	var licenses []string
+// filtering out operators (AND, OR, WITH). Exception identifiers -- the token
+// after a WITH -- are returned separately rather than discarded, so that a
+// caller validating an expression can see them.
+func extractLicenseIdentifiers(tokens []string) (licenses, exceptions []string) {
 	seen := make(map[string]bool)
 	skipNext := false
 
@@ -112,6 +127,7 @@ func extractLicenseIdentifiers(tokens []string) []string {
 
 		if skipNext {
 			skipNext = false
+			exceptions = append(exceptions, token)
 			continue
 		}
 
@@ -135,5 +151,5 @@ func extractLicenseIdentifiers(tokens []string) []string {
 		}
 	}
 
-	return licenses
+	return licenses, exceptions
 }

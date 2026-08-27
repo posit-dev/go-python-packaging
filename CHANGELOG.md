@@ -73,7 +73,42 @@ mistaken for a safe patch upgrade.
   `amd64` where linux uses `x86_64`, and macOS uses `arm64` where linux uses
   `aarch64`.
 
+- `reqtxt`: every `Entry` and `OptionEntry` carries a `Source` with the file and
+  line it came from, plus `SourceOf` and a `WithPath` parse option.
+
+  `Flatten` splices every include level into one flat `File` and consumes each
+  `IncludeEntry`, so afterwards nothing remained to attribute an entry to a file,
+  and no entry carried a line number at all. That matters most for whole-file
+  options, since `Pre()` and `IndexURL()` are any-wins across the flattened
+  result: a single `--pre` nested three includes deep, even inside a `-c`
+  subtree, silently changes what a caller collects. "Enabled by line 2 of
+  extra.txt" is a materially better diagnostic than "enabled", and on a machine
+  with no network it is the difference between diagnosable and not.
+
+  `Flatten` sets the path per included file automatically. `Parse` leaves it
+  empty unless `WithPath` is given, since it takes content rather than a
+  filename.
+
 ### Fixed
+
+- `reqtxt`: `--all-releases`, `--only-final` and `--use-feature` are recognized.
+  All three are in pip's `SUPPORTED_OPTIONS`, and the consequence of their
+  absence was worse than losing normalization: an unrecognized option is assumed
+  boolean, so its argument was dispatched as its own line and became a
+  **fabricated requirement**. `--use-feature 2020-resolver` produced a package
+  named `2020-resolver` from a valid pip file.
+
+  `--all-releases` and `--only-final` are pip's per-package replacements for
+  `--pre`, which pip refuses to combine with them.
+
+- `reqtxt`: a standalone `--hash` line is no longer an error. pip logs *"line %s
+  has --hash but no requirement, and will be ignored"* and continues, so the file
+  installs fine and rejecting it made this package stricter than pip. It is
+  surfaced as a file-level option rather than dropped, so a caller can reproduce
+  pip's warning.
+
+- `reqtxt`: `Flatten` with a nil `open` callback returns an error instead of
+  panicking.
 
 - `tags`: `riscv64` and `loongarch64` targets now claim the same manylinux
   series as every other non-x86 architecture — floored at glibc 2.17, with the

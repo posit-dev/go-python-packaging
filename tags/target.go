@@ -81,12 +81,14 @@ func (t Target) Compile() (*Matcher, error) {
 		return nil, err
 	}
 	rank := make(map[Tag]int, len(ordered))
+	abis := make(map[[2]string]struct{})
 	for i, tag := range ordered {
 		if _, exists := rank[tag]; !exists {
 			rank[tag] = i
 		}
+		abis[[2]string{tag.Interpreter, tag.ABI}] = struct{}{}
 	}
-	return &Matcher{tags: ordered, rank: rank}, nil
+	return &Matcher{tags: ordered, rank: rank, target: t, abis: abis}, nil
 }
 
 func (t Target) validate() error {
@@ -205,6 +207,39 @@ var (
 	windowsArchs = []string{"amd64", "x86", "arm64"}
 )
 
+// OSes returns the operating systems a Target may name, in no meaningful order.
+func OSes() []string {
+	return []string{"linux", "macos", "windows"}
+}
+
+// Archs returns the architectures valid for os, or nil if os is not one of
+// OSes(). The result is a copy: these are the same lists Compile validates
+// against, and a caller must not be able to widen them.
+//
+// This exists so a caller validating an operator-supplied "os/arch" string can
+// report what it WOULD have accepted. Compile already rejects an unsupported
+// arch with ErrUnsupportedTarget, which is enough to decline a value but not to
+// explain it, and the spellings are neither uniform across operating systems nor
+// guessable: windows uses "amd64" where linux uses "x86_64", and macOS uses
+// "arm64" where linux uses "aarch64". Without this, every caller keeps a private
+// copy that drifts from validate().
+func Archs(os string) []string {
+	var src []string
+	switch os {
+	case "linux":
+		src = linuxArchs
+	case "macos":
+		src = macosArchs
+	case "windows":
+		src = windowsArchs
+	default:
+		return nil
+	}
+	out := make([]string, len(src))
+	copy(out, src)
+	return out
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {
@@ -220,6 +255,22 @@ func contains(list []string, s string) bool {
 type Matcher struct {
 	tags []Tag
 	rank map[Tag]int
+	// target is retained so IsCompatibleOrNewer can compare a candidate
+	// platform tag against the version this Matcher was declared at.
+	target Target
+	// abis is the set of (Interpreter, ABI) pairs this Matcher accepts on ANY
+	// platform, so IsCompatibleOrNewer can relax the platform axis alone
+	// without also accepting a wheel built for the wrong interpreter.
+	abis map[[2]string]struct{}
+	// anyLibc records that this Matcher covers both glibc and musl, so
+	// IsCompatibleOrNewer must treat a newer tag from either family as newer.
+	// Set only by CompileAnyLibc.
+	anyLibc bool
+	// muslMajor and muslMinor are the musl version this Matcher covers, set only
+	// by CompileAnyLibc. They are NOT interchangeable with target.LibcMajor/Minor:
+	// musl and glibc version numbers have no correspondence, so comparing a
+	// musllinux tag against a glibc floor is a category error.
+	muslMajor, muslMinor int
 }
 
 // Tags returns a copy of the full ordered list of compatible tags, most

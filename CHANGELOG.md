@@ -9,6 +9,37 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- `marker`: `Marker.EvaluateUndecidable` reports whether a marker is satisfied
+  **and** which of its comparisons could not be decided, and `Marker.Variables`
+  reports the environment variables a marker references.
+
+  `Evaluate` returns a bare `bool`, so a caller cannot distinguish "false" from
+  "could not tell". Two things produce the latter: `~=` and `===` reaching the
+  generic string-operator table, which has no semantics for them (pypa/packaging
+  raises `UndefinedComparison`), and an environment variable that resolves to
+  `""`, which `EnvironmentFromTarget` legitimately does for `platform_release`
+  and `platform_version`, since a *declared* target has no kernel to report.
+
+  A consumer that must not discard a dependency edge (building a mirror or an
+  offline bundle, where a dropped edge means a missing package and no fallback)
+  previously had to scan `Marker.String()` for those operators and variable
+  names, with false positives on quoted literals and a token list to keep in
+  sync by hand.
+
+  `Variables` covers the half this library cannot decide for the caller: a
+  declared `3.13` forces the caller to invent a `PythonFullVersion`, and an
+  invented value is decidable-but-arbitrary (`>= "3.13.2"` is false at `3.13.0`,
+  true at `3.13.99`). Only the caller knows which fields it fabricated; it just
+  needs to ask which variables a marker touches.
+
+  Ordered comparisons on string operands are deliberately **not** undecidable:
+  `<`/`>` returning false and `<=`/`>=` collapsing to equality is faithful to
+  packaging, whose operator table is the same. Verified against 26.3.
+
+  `Evaluate` is now a wrapper and its behaviour is unchanged.
+
 ### Fixed
 
 - `tags`: `riscv64` and `loongarch64` targets now claim the same manylinux

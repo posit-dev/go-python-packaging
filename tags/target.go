@@ -205,6 +205,39 @@ var (
 	windowsArchs = []string{"amd64", "x86", "arm64"}
 )
 
+// OSes returns the operating systems a Target may name, in no meaningful order.
+func OSes() []string {
+	return []string{"linux", "macos", "windows"}
+}
+
+// Archs returns the architectures valid for os, or nil if os is not one of
+// OSes(). The result is a copy: these are the same lists Compile validates
+// against, and a caller must not be able to widen them.
+//
+// This exists so a caller validating an operator-supplied "os/arch" string can
+// report what it WOULD have accepted. Compile already rejects an unsupported
+// arch with ErrUnsupportedTarget, which is enough to decline a value but not to
+// explain it, and the spellings are neither uniform across operating systems nor
+// guessable: windows uses "amd64" where linux uses "x86_64", and macOS uses
+// "arm64" where linux uses "aarch64". Without this, every caller keeps a private
+// copy that drifts from validate().
+func Archs(os string) []string {
+	var src []string
+	switch os {
+	case "linux":
+		src = linuxArchs
+	case "macos":
+		src = macosArchs
+	case "windows":
+		src = windowsArchs
+	default:
+		return nil
+	}
+	out := make([]string, len(src))
+	copy(out, src)
+	return out
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {

@@ -9,6 +9,36 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tags`: `riscv64` and `loongarch64` targets now claim the same manylinux
+  series as every other non-x86 architecture — floored at glibc 2.17, with the
+  `manylinux2014_<arch>` legacy alias — matching pypa/packaging.
+
+  These two architectures were inherited from uv's floor table, which floors
+  them at glibc 2.31 and 2.36 respectively and records no legacy alias for
+  either. Because a target below its floor claims no manylinux tag **at all**
+  rather than a shortened list, the effect was not marginal: a `loongarch64`
+  host on glibc 2.35 (Loongnix, Debian — a real configuration) was offered 42
+  tags where packaging 26.2 computes 582, so no manylinux wheel whatsoever.
+  `riscv64` on glibc 2.28 gave 42 against 393. Both figures now match packaging
+  exactly.
+
+  Both causes had to be fixed together: raising the floor alone leaves the alias
+  missing, because packaging's legacy map is keyed by glibc version *alone* and
+  is therefore architecture-independent.
+
+  Callers that compile a target for either architecture will now accept
+  manylinux wheels they previously rejected. That is the point — this package
+  answers "is this wheel installable on the declared target", and being narrower
+  than pip means rejecting wheels pip would install. For a mirror or an offline
+  bundle that shows up as silently omitted content the client cannot then
+  obtain.
+
+  `TestLinux_NarrowNonX86Floors`, which pinned the old narrow output, is
+  replaced by `TestLinux_NonX86FloorsAreUniform`, a parity assertion against
+  `aarch64` that holds as the manylinux series grows.
+
 ## [0.8.0] - 2026-08-19
 
 ### Breaking

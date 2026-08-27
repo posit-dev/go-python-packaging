@@ -321,20 +321,26 @@ type legacyManylinuxAlias struct {
 
 // manylinuxFloor is the oldest glibc version (major, minor) a given
 // architecture's manylinux tags may claim, plus any legacy aliases that
-// architecture supports. Values are uv's (github.com/astral-sh/uv) floor table,
-// which matches pypa/packaging for x86_64/i686/aarch64/armv7l/ppc64/ppc64le/
-// s390x but floors riscv64 at 2.31 and loongarch64 at 2.36.
+// architecture supports. Every non-x86 architecture floors at glibc 2.17 and
+// carries the manylinux2014 alias, matching pypa/packaging.
 //
-// ⚠️ Those last two are NARROWER than pypa/packaging 26.2, which floors every
-// non-x86 architecture at glibc 2.17 and does list both in its _ALLOWED_ARCHS
-// (verified against the installed 26.2; an earlier version of this comment
-// claimed packaging did not recognize them at all, which is no longer true, if
-// it ever was). So a riscv64 or loongarch64 target here declines manylinux tags
-// between 2.17 and its floor that pip on the same host would accept. That is a
-// real divergence on real architectures, inherited from #18632, and is
-// deliberately left alone here rather than changed as a drive-by: it is the
-// opposite direction from the cross-major fix below and deserves its own
-// decision. Tracked for follow-up.
+// This table began as uv's (github.com/astral-sh/uv) floor table, which agrees
+// with packaging for x86_64/i686/aarch64/armv7l/ppc64/ppc64le/s390x but floors
+// riscv64 at 2.31 and loongarch64 at 2.36 and records no legacy alias for
+// either. Those two entries have been widened to packaging's values, because a
+// target below its floor claims no manylinux tag AT ALL rather than a shortened
+// list: a loongarch64 host on glibc 2.35 (Loongnix, Debian -- a real
+// configuration) was offered 42 tags where pip computes 582, so no manylinux
+// wheel whatsoever. Both fixes are needed together; the floor number alone
+// leaves the alias missing, since packaging's legacy map is keyed by glibc
+// version ALONE and is therefore architecture-independent.
+//
+// Direction matters for the consumers: this package answers "is this wheel
+// installable on the declared target", and the thing that ultimately installs
+// is pip. Being NARROWER than pip rejects wheels pip would accept, which for a
+// mirror or an offline bundle means silently omitting content the client then
+// cannot get. Being wider only costs bytes. Where the two upstreams disagree,
+// follow the one pip uses.
 //
 // Rule (Global Constraints): a target declaring glibc (2, m) accepts a
 // manylinux_2_y tag iff m >= y, down to this floor.
@@ -348,16 +354,13 @@ var manylinuxFloor = map[string]struct {
 	"i686": {2, 5, []legacyManylinuxAlias{
 		{"manylinux1", 2, 5}, {"manylinux2010", 2, 12}, {"manylinux2014", 2, 17},
 	}},
-	"aarch64": {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
-	"armv7l":  {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
-	"ppc64":   {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
-	"ppc64le": {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
-	"s390x":   {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
-	"riscv64": {2, 31, nil},
-	// loongarch64's floor is uv's 2.36. pypa/packaging 26.2 does recognize this
-	// architecture -- it is in _ALLOWED_ARCHS -- but floors it at 2.17 like
-	// every other non-x86 arch; see the divergence note above.
-	"loongarch64": {2, 36, nil},
+	"aarch64":     {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
+	"armv7l":      {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
+	"ppc64":       {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
+	"ppc64le":     {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
+	"s390x":       {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
+	"riscv64":     {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
+	"loongarch64": {2, 17, []legacyManylinuxAlias{{"manylinux2014", 2, 17}}},
 }
 
 // linuxPlatformTags builds the ordered platform-tag list for a linux
@@ -429,8 +432,8 @@ type glibcVersion struct {
 //     will stop.
 //
 // Within the floor's own major the walk bottoms out at that architecture's floor
-// minor from manylinuxFloor -- 2.5 on x86_64/i686, 2.17 on most others, but 2.31
-// on riscv64 and 2.36 on loongarch64; any other major goes down to <major>_0.
+// minor from manylinuxFloor -- 2.5 on x86_64/i686, 2.17 on every other
+// architecture; any other major goes down to <major>_0.
 //
 // So "below the floor" has two different answers, and conflating them is how this
 // function's narrower predecessor looked correct:

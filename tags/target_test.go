@@ -199,56 +199,54 @@ func TestLinux_CrossGlibcMajor(t *testing.T) {
 	})
 }
 
-// TestLinux_NarrowNonX86Floors pins the riscv64/loongarch64 manylinux
-// divergence documented in doc.go. It asserts THIS PACKAGE'S current, narrower
-// output rather than upstream's, which is why it is hand-written instead of a
-// generated golden fixture: a fixture from packaging would record the wider
-// answer and fail.
+// TestLinux_NonX86FloorsAreUniform asserts that every non-x86 architecture
+// claims the same manylinux series as every other, i.e. floors at glibc 2.17
+// and carries the manylinux2014 alias, matching pypa/packaging.
 //
-// It exists so that changing manylinuxFloor is a deliberate test update rather
-// than silent drift, and so the size of the gap is written down somewhere
-// executable. Measured against packaging 26.2 for these same targets, in order:
-// loongarch64/glibc 2.35 gives packaging 582 tags to our 42, and
-// riscv64/glibc 2.28 gives 393 to our 42.
+// riscv64 and loongarch64 used to be the exceptions: inherited from uv's floor
+// table, they floored at 2.31 and 2.36 with no legacy alias. Because a target
+// below its floor claims no manylinux tag AT ALL rather than a shortened list,
+// that was not marginal -- a loongarch64 host on glibc 2.35 got 42 tags where
+// packaging computes 582, so no manylinux wheel whatsoever.
 //
-// If you are here because you widened the floors to 2.17 and this test failed:
-// that is the intended interaction. Update the expectations, and add the legacy
-// alias too -- packaging's legacy map is keyed by glibc version alone, so
-// manylinux2014_<arch> applies to these architectures despite manylinuxFloor
-// recording no alias for them.
-func TestLinux_NarrowNonX86Floors(t *testing.T) {
-	for _, tc := range []struct {
-		arch                 string
-		libcMajor, libcMinor int
-		upstreamTagCount     int
-	}{
-		{"loongarch64", 2, 35, 582},
-		{"riscv64", 2, 28, 393},
-	} {
-		t.Run(tc.arch, func(t *testing.T) {
-			m, err := Target{
-				Implementation: "cp", PyMajor: 3, PyMinor: 12,
-				OS: "linux", Arch: tc.arch,
-				Libc: "glibc", LibcMajor: tc.libcMajor, LibcMinor: tc.libcMinor,
-			}.Compile()
-			require.NoError(t, err)
-			ss := tagStrings(m.Tags())
+// This is written as a PARITY assertion against a reference architecture rather
+// than as a hardcoded tag list on purpose: it is the actual invariant, and it
+// keeps holding when the manylinux series is extended. Re-narrowing any single
+// architecture breaks it, which is what the old pinning test was for.
+func TestLinux_NonX86FloorsAreUniform(t *testing.T) {
+	// Platform tags for arch at a fixed glibc, with the architecture suffix
+	// normalized away so two architectures' series can be compared directly.
+	seriesFor := func(t *testing.T, arch string) []string {
+		t.Helper()
+		m, err := Target{
+			Implementation: "cp", PyMajor: 3, PyMinor: 12,
+			OS: "linux", Arch: arch,
+			Libc: "glibc", LibcMajor: 2, LibcMinor: 35,
+		}.Compile()
+		require.NoError(t, err)
 
-			// Below its floor this target claims no manylinux tag at all -- not
-			// a shortened list -- so the only platform tag left is the bare one.
-			for _, s := range ss {
-				assert.NotContains(t, s, "manylinux",
-					"%s glibc %d.%d is below its floor and must claim no manylinux tag",
-					tc.arch, tc.libcMajor, tc.libcMinor)
-			}
-			assert.Contains(t, ss, "cp312-cp312-linux_"+tc.arch)
+		var out []string
+		for _, tag := range m.Tags() {
+			out = append(out, strings.ReplaceAll(tag.Platform, arch, "<arch>"))
+		}
+		return out
+	}
 
-			// The magnitude of the divergence, recorded executably. 42 is the
-			// bare-linux-only tag count; upstreamTagCount is what packaging 26.2
-			// produces for the same target.
-			assert.Len(t, ss, 42)
-			assert.Less(t, len(ss), tc.upstreamTagCount,
-				"this package is narrower than packaging here, by design but not by preference")
+	// aarch64 was never affected, so it is the reference for what a non-x86
+	// architecture should claim.
+	want := seriesFor(t, "aarch64")
+
+	// Guard the reference itself, so a regression there cannot make the parity
+	// assertions below vacuously pass.
+	require.Contains(t, want, "manylinux_2_17_<arch>",
+		"reference architecture must reach the 2.17 floor")
+	require.Contains(t, want, "manylinux2014_<arch>",
+		"reference architecture must carry the legacy alias")
+
+	for _, arch := range []string{"riscv64", "loongarch64", "armv7l", "ppc64", "ppc64le", "s390x"} {
+		t.Run(arch, func(t *testing.T) {
+			assert.Equal(t, want, seriesFor(t, arch),
+				"%s must claim the same manylinux series as aarch64", arch)
 		})
 	}
 }

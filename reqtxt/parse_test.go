@@ -219,9 +219,13 @@ func TestParse_Hashes(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidRequirementsFile)
 
-	_, err = Parse("--hash=sha256:x")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidRequirementsFile)
+	// A standalone --hash is NOT an error: pip logs "line %s has --hash but no
+	// requirement, and will be ignored" and carries on, so a file containing one
+	// installs fine. It surfaces as a file-level option instead; see
+	// TestStandaloneHash_IsNotAnError.
+	f, err = Parse("--hash=sha256:x")
+	require.NoError(t, err)
+	assert.Empty(t, f.Requirements())
 }
 
 func TestParse_ConfigSettings(t *testing.T) {

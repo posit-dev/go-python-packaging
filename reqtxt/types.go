@@ -178,6 +178,13 @@ const (
 	optNoBinary      = "--no-binary"
 	optOnlyBinary    = "--only-binary"
 	optPreferBinary  = "--prefer-binary"
+	// optAllReleases and optOnlyFinal are pip's per-package replacements for
+	// --pre, which pip rejects in combination with it. Both take a value:
+	// ":all:", ":none:", or a comma-separated package list.
+	optAllReleases = "--all-releases"
+	optOnlyFinal   = "--only-final"
+	// optUseFeature is pip's --use-feature <feature>.
+	optUseFeature = "--use-feature"
 )
 
 // Requirements returns the RequirementEntry values in f.Entries, in file

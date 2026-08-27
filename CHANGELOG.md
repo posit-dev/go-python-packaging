@@ -40,6 +40,39 @@ mistaken for a safe patch upgrade.
 
   `Evaluate` is now a wrapper and its behaviour is unchanged.
 
+- `tags`: `Matcher.IsCompatibleOrNewer` additionally accepts a same-family,
+  same-architecture platform tag whose version is **above** the declared one.
+
+  The platform walks run downward from the declared version to a floor, so a
+  `Matcher` answers "can the host I described run this wheel". A mirror or an
+  offline bundle asks whether a *durable declaration* of that host should collect
+  the wheel, and the two diverge over time: a set compiled once quietly stops
+  matching wheels built for platforms released since. Accepting a too-new
+  platform costs bytes; rejecting one costs availability, and for an air-gapped
+  mirror a wheel not collected cannot be obtained at all.
+
+  The interpreter and ABI axes are not relaxed, so a `cp314` wheel is still
+  rejected by a `cp313` target however new its platform tag, and a free-threaded
+  target does not gain `abi3` wheels. No rank is reported, deliberately: these
+  tags fall outside the ordered set the `Matcher` generated.
+
+- `tags`: `Target.CompileAnyLibc` compiles a linux target for both libc families
+  and returns one `Matcher` accepting either, glibc ranked ahead of musl.
+
+  `Compile` requires a `Libc`, and platform tags are manylinux **xor** musllinux
+  depending on it, so "linux x86_64, either libc" previously meant compiling two
+  targets and unioning them by hand. Omitting the musl one is silent: every
+  `musllinux` wheel stops matching with nothing to say a whole family was dropped.
+
+- `tags`: `Archs(os)` and `OSes()` expose the architecture lists `Compile`
+  validates against, as copies.
+
+  Previously package-private, so a caller validating an operator-supplied
+  `os/arch` string could reject a value but not report what it would have
+  accepted. The spellings are neither uniform nor guessable: windows uses
+  `amd64` where linux uses `x86_64`, and macOS uses `arm64` where linux uses
+  `aarch64`.
+
 ### Fixed
 
 - `tags`: `riscv64` and `loongarch64` targets now claim the same manylinux

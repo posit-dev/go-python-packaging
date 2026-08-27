@@ -18,6 +18,44 @@ type File struct {
 	Entries []Entry
 }
 
+// Source records where an entry came from. After Flatten, Path is the include
+// target as opened, so an entry's origin survives the flattening that consumes
+// and discards the IncludeEntry that pulled it in.
+//
+// Without this, a caller cannot report which file supplied a given entry or
+// option, and after Flatten there is nothing left to deduce it from. That
+// matters most for whole-file options: "--pre" is any-wins across the flattened
+// result, so a single "--pre" nested three includes deep silently changes what a
+// caller collects, and "changed by line 4 of shared-constraints.txt" is a
+// materially different diagnostic from "changed".
+//
+// Path is empty after a bare Parse unless WithPath was given; Line is 1-based
+// and is 0 only where no line applies.
+type Source struct {
+	Path string
+	Line int
+}
+
+// SourceOf returns the Source of any Entry. It exists so a caller iterating
+// File.Entries for diagnostics does not need a type switch purely to read
+// provenance.
+func SourceOf(e Entry) Source {
+	switch n := e.(type) {
+	case *RequirementEntry:
+		return n.Source
+	case *IncludeEntry:
+		return n.Source
+	case *UnnamedEntry:
+		return n.Source
+	case *OptionEntry:
+		return n.Source
+	default:
+		// Unreachable: Entry's entry() method is unexported, so the set of
+		// implementations is closed to this package.
+		return Source{}
+	}
+}
+
 // Entry is one line's worth of parsed requirements.txt content. It is
 // implemented by *RequirementEntry, *IncludeEntry, *UnnamedEntry, and
 // *OptionEntry.
@@ -38,6 +76,8 @@ type RequirementEntry struct {
 	// inherited through nested includes, so a "-r" nested inside a "-c" file
 	// yields non-constraint entries. Set by Flatten; false after Parse alone.
 	Constraint bool
+	// Source records the file and line this entry came from.
+	Source Source
 }
 
 func (*RequirementEntry) entry() {}
@@ -49,6 +89,8 @@ type IncludeEntry struct {
 	// Constraint is true if this include used "-c"/"--constraint" rather
 	// than "-r"/"--requirement".
 	Constraint bool
+	// Source records the file and line this entry came from.
+	Source Source
 }
 
 func (*IncludeEntry) entry() {}
@@ -71,6 +113,8 @@ type UnnamedEntry struct {
 	// inherited through nested includes, so a "-r" nested inside a "-c" file
 	// yields non-constraint entries. Set by Flatten; false after Parse alone.
 	Constraint bool
+	// Source records the file and line this entry came from.
+	Source Source
 }
 
 func (*UnnamedEntry) entry() {}
@@ -81,6 +125,8 @@ func (*UnnamedEntry) entry() {}
 type OptionEntry struct {
 	Name  string
 	Value string
+	// Source records the file and line this entry came from.
+	Source Source
 }
 
 func (*OptionEntry) entry() {}

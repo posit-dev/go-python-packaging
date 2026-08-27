@@ -54,6 +54,19 @@ type parseConfig struct {
 	// and whether it is set. When nil, ${VAR} references are left
 	// literal (no expansion is attempted).
 	env func(string) (string, bool)
+	// path is recorded on every entry's Source. Empty unless WithPath was
+	// given; Flatten supplies it per included file.
+	path string
+}
+
+// WithPath records path on the Source of every entry Parse produces. Parse takes
+// content rather than a filename, so it cannot know where that content came
+// from; without this a caller cannot attribute an entry to a file.
+//
+// Flatten sets this per included file automatically, so provenance survives the
+// flattening that consumes each IncludeEntry.
+func WithPath(path string) ParseOption {
+	return func(cfg *parseConfig) { cfg.path = path }
 }
 
 // WithEnv enables "${VAR}" expansion using lookup (e.g. os.LookupEnv).

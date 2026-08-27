@@ -70,7 +70,10 @@ func flattenWalk(p string, constraintCtx bool, visited map[string]bool, open fun
 
 	content := decodeUTF8(raw)
 
-	file, err := Parse(content, opts...)
+	// WithPath is appended rather than prepended so a caller's own WithPath
+	// cannot silently attribute every included file to one path. Each level
+	// records the file actually opened.
+	file, err := Parse(content, append(append([]ParseOption(nil), opts...), WithPath(p))...)
 	if err != nil {
 		return nil, err
 	}

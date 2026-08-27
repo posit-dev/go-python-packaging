@@ -71,10 +71,40 @@ func Parse(content string, opts ...ParseOption) (*File, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Stamped here rather than at each construction site: every entry from a
+		// logical line shares that line, including the per-requirement options
+		// gathered from its continuations, and one pass cannot miss a site.
+		src := Source{Path: cfg.path, Line: ll.line}
+		for _, e := range entries {
+			stampSource(e, src)
+		}
 		file.Entries = append(file.Entries, entries...)
 	}
 
 	return file, nil
+}
+
+// stampSource records src on e and on any per-requirement options attached to
+// it. A continuation line's options report the line the logical line STARTED on,
+// which is the same anchor reqtxt already uses for errors raised on a joined
+// line.
+func stampSource(e Entry, src Source) {
+	switch n := e.(type) {
+	case *RequirementEntry:
+		n.Source = src
+		for i := range n.Options {
+			n.Options[i].Source = src
+		}
+	case *IncludeEntry:
+		n.Source = src
+	case *UnnamedEntry:
+		n.Source = src
+		for i := range n.Options {
+			n.Options[i].Source = src
+		}
+	case *OptionEntry:
+		n.Source = src
+	}
 }
 
 // dispatchLogicalLine routes one preprocessed logical line to the flag

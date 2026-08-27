@@ -266,6 +266,11 @@ type Matcher struct {
 	// IsCompatibleOrNewer must treat a newer tag from either family as newer.
 	// Set only by CompileAnyLibc.
 	anyLibc bool
+	// muslMajor and muslMinor are the musl version this Matcher covers, set only
+	// by CompileAnyLibc. They are NOT interchangeable with target.LibcMajor/Minor:
+	// musl and glibc version numbers have no correspondence, so comparing a
+	// musllinux tag against a glibc floor is a category error.
+	muslMajor, muslMinor int
 }
 
 // Tags returns a copy of the full ordered list of compatible tags, most

@@ -73,7 +73,8 @@ func (m *Matcher) platformIsNewer(platformTag string) bool {
 		if !m.libcFamilyMatches(libc) {
 			return false
 		}
-		return versionAbove(major, minor, m.target.LibcMajor, m.target.LibcMinor)
+		floorMajor, floorMinor := m.libcFloorFor(libc)
+		return versionAbove(major, minor, floorMajor, floorMinor)
 
 	case "macos":
 		major, minor, format, err := parseMacosPlatformTag(platformTag)
@@ -98,6 +99,17 @@ func (m *Matcher) libcFamilyMatches(libc string) bool {
 		return libc == "glibc" || libc == "musl"
 	}
 	return libc == m.target.Libc
+}
+
+// libcFloorFor returns the declared version to compare a tag of the given libc
+// family against. musl and glibc version numbers have no correspondence, so an
+// any-libc Matcher must not compare a musllinux tag against its glibc floor --
+// musllinux_2_0 against glibc 2.28 would read as "older" and be rejected.
+func (m *Matcher) libcFloorFor(libc string) (major, minor int) {
+	if m.anyLibc && libc == "musl" {
+		return m.muslMajor, m.muslMinor
+	}
+	return m.target.LibcMajor, m.target.LibcMinor
 }
 
 // versionAbove reports whether (major, minor) is strictly greater than

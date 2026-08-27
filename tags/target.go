@@ -81,12 +81,14 @@ func (t Target) Compile() (*Matcher, error) {
 		return nil, err
 	}
 	rank := make(map[Tag]int, len(ordered))
+	abis := make(map[[2]string]struct{})
 	for i, tag := range ordered {
 		if _, exists := rank[tag]; !exists {
 			rank[tag] = i
 		}
+		abis[[2]string{tag.Interpreter, tag.ABI}] = struct{}{}
 	}
-	return &Matcher{tags: ordered, rank: rank}, nil
+	return &Matcher{tags: ordered, rank: rank, target: t, abis: abis}, nil
 }
 
 func (t Target) validate() error {
@@ -253,6 +255,17 @@ func contains(list []string, s string) bool {
 type Matcher struct {
 	tags []Tag
 	rank map[Tag]int
+	// target is retained so IsCompatibleOrNewer can compare a candidate
+	// platform tag against the version this Matcher was declared at.
+	target Target
+	// abis is the set of (Interpreter, ABI) pairs this Matcher accepts on ANY
+	// platform, so IsCompatibleOrNewer can relax the platform axis alone
+	// without also accepting a wheel built for the wrong interpreter.
+	abis map[[2]string]struct{}
+	// anyLibc records that this Matcher covers both glibc and musl, so
+	// IsCompatibleOrNewer must treat a newer tag from either family as newer.
+	// Set only by CompileAnyLibc.
+	anyLibc bool
 }
 
 // Tags returns a copy of the full ordered list of compatible tags, most

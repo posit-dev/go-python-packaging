@@ -9,6 +9,8 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-28
+
 ### Added
 
 - `marker`: `Marker.EvaluateUndecidable` reports whether a marker is satisfied
@@ -1200,7 +1202,8 @@ Initial release. One module, one package per PEP concern:
 - `license/` — PyPI classifier standardization, SPDX expression parsing, and top-level
   license derivation.
 
-[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/posit-dev/go-python-packaging/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/posit-dev/go-python-packaging/compare/v0.5.0...v0.6.0

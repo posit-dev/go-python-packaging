@@ -41,6 +41,13 @@ var schemeRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
 // recursive Parse call, so e.g. WithEnv expansion is applied consistently
 // at every level of the include tree.
 func Flatten(root string, open func(path string) ([]byte, error), opts ...ParseOption) (*File, error) {
+	// open is mandatory and is called for the root before anything else, so a nil
+	// callback would panic on the first dereference. In a CLI a stack trace is a
+	// materially worse failure than an error string, and the caller cannot tell
+	// them apart from the outside.
+	if open == nil {
+		return nil, errors.Join(ErrInvalidRequirementsFile, errors.New("Flatten requires a non-nil open callback"))
+	}
 	entries, err := flattenWalk(root, false, map[string]bool{}, open, opts)
 	if err != nil {
 		return nil, err
@@ -70,7 +77,10 @@ func flattenWalk(p string, constraintCtx bool, visited map[string]bool, open fun
 
 	content := decodeUTF8(raw)
 
-	file, err := Parse(content, opts...)
+	// WithPath is appended rather than prepended so a caller's own WithPath
+	// cannot silently attribute every included file to one path. Each level
+	// records the file actually opened.
+	file, err := Parse(content, append(append([]ParseOption(nil), opts...), WithPath(p))...)
 	if err != nil {
 		return nil, err
 	}

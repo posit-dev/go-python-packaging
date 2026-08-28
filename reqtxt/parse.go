@@ -36,6 +36,15 @@ var knownOptions = map[string]knownOption{
 	"--no-binary":       {optNoBinary, 1},
 	"--only-binary":     {optOnlyBinary, 1},
 	"--prefer-binary":   {optPreferBinary, 0},
+	// These three are in pip's SUPPORTED_OPTIONS and were missing here, which
+	// mattered more than "not normalized": an unknown bare option is assumed
+	// boolean, so its argument was dispatched as a separate line and became a
+	// FABRICATED requirement. "--use-feature 2020-resolver" yielded a package
+	// named "2020-resolver" from a perfectly valid pip file. All three take a
+	// value (pip: type="str").
+	"--all-releases": {optAllReleases, 1},
+	"--only-final":   {optOnlyFinal, 1},
+	"--use-feature":  {optUseFeature, 1},
 }
 
 // perLineValueOptions are the per-requirement options (other than
@@ -71,10 +80,40 @@ func Parse(content string, opts ...ParseOption) (*File, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Stamped here rather than at each construction site: every entry from a
+		// logical line shares that line, including the per-requirement options
+		// gathered from its continuations, and one pass cannot miss a site.
+		src := Source{Path: cfg.path, Line: ll.line}
+		for _, e := range entries {
+			stampSource(e, src)
+		}
 		file.Entries = append(file.Entries, entries...)
 	}
 
 	return file, nil
+}
+
+// stampSource records src on e and on any per-requirement options attached to
+// it. A continuation line's options report the line the logical line STARTED on,
+// which is the same anchor reqtxt already uses for errors raised on a joined
+// line.
+func stampSource(e Entry, src Source) {
+	switch n := e.(type) {
+	case *RequirementEntry:
+		n.Source = src
+		for i := range n.Options {
+			n.Options[i].Source = src
+		}
+	case *IncludeEntry:
+		n.Source = src
+	case *UnnamedEntry:
+		n.Source = src
+		for i := range n.Options {
+			n.Options[i].Source = src
+		}
+	case *OptionEntry:
+		n.Source = src
+	}
 }
 
 // dispatchLogicalLine routes one preprocessed logical line to the flag
@@ -198,7 +237,28 @@ func dispatchEditable(hasEq bool, eqValue string, rest []string, lineNum int) ([
 // only ever a per-requirement option (see attachReqOptions).
 func dispatchFileOption(name string, hasEq bool, eqValue string, rest []string, lineNum int) ([]Entry, error) {
 	if name == "--hash" {
-		return nil, lineError(lineNum, "--hash has no associated requirement")
+		// pip does NOT reject this. req_file.py logs "line %s has --hash but no
+		// requirement, and will be ignored" and carries on, so a file containing
+		// one installs fine and rejecting it made this package stricter than the
+		// thing it models.
+		//
+		// Emitted as a file-level OptionEntry rather than dropped, so the
+		// information survives for a caller that wants to reproduce pip's warning.
+		// There is nothing to attach it to -- "--hash" is only ever a
+		// per-requirement option (see attachReqOptions) -- and File's accessors
+		// ignore names they do not know, so this cannot be mistaken for a
+		// requirement's hash.
+		value, remaining, err := takeValue(name, hasEq, eqValue, rest, lineNum)
+		if err != nil {
+			// A bare "--hash" with no value at all: still not fatal for pip, which
+			// never sees a value it can use either way.
+			value, remaining = eqValue, rest
+		}
+		following, err := dispatchLine(remaining, lineNum)
+		if err != nil {
+			return nil, err
+		}
+		return append([]Entry{&OptionEntry{Name: name, Value: value}}, following...), nil
 	}
 
 	var (
@@ -228,6 +288,14 @@ func dispatchFileOption(name string, hasEq bool, eqValue string, rest []string, 
 		// Unknown flag: "--opt=value" takes the value; a bare "--opt" is
 		// boolean and never consumes the next token — it is left to be
 		// dispatched as its own, separate entry.
+		//
+		// That assumption is a guess, and it is the RIGHT guess for a boolean
+		// followed by a requirement ("--frob foo" yields the option and foo). It is
+		// the wrong guess for an unknown arity-1 option, where the argument becomes
+		// a fabricated requirement ("--timeout 60" yields a package named "60").
+		// Both readings are guesses and neither is safe, so the fix is not to
+		// change the guess but to leave fewer options unknown: see knownOptions,
+		// which is audited against pip's SUPPORTED_OPTIONS.
 		value, remaining = eqValue, rest
 	}
 

@@ -94,10 +94,10 @@ func TestParse_Include(t *testing.T) {
 		content string
 		want    IncludeEntry
 	}{
-		{name: "-r space form", content: "-r base.txt", want: IncludeEntry{Path: "base.txt"}},
-		{name: "-c space form is a constraint", content: "-c c.txt", want: IncludeEntry{Path: "c.txt", Constraint: true}},
-		{name: "--requirement= form", content: "--requirement=x.txt", want: IncludeEntry{Path: "x.txt"}},
-		{name: "--constraint= form is a constraint", content: "--constraint=x.txt", want: IncludeEntry{Path: "x.txt", Constraint: true}},
+		{name: "-r space form", content: "-r base.txt", want: IncludeEntry{Path: "base.txt", Source: Source{Line: 1}}},
+		{name: "-c space form is a constraint", content: "-c c.txt", want: IncludeEntry{Path: "c.txt", Constraint: true, Source: Source{Line: 1}}},
+		{name: "--requirement= form", content: "--requirement=x.txt", want: IncludeEntry{Path: "x.txt", Source: Source{Line: 1}}},
+		{name: "--constraint= form is a constraint", content: "--constraint=x.txt", want: IncludeEntry{Path: "x.txt", Constraint: true, Source: Source{Line: 1}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -144,27 +144,27 @@ func TestParse_FileOptions(t *testing.T) {
 		{
 			name:    "--index-url space form",
 			content: "--index-url https://i/simple",
-			want:    []OptionEntry{{Name: "--index-url", Value: "https://i/simple"}},
+			want:    []OptionEntry{{Name: "--index-url", Value: "https://i/simple", Source: Source{Line: 1}}},
 		},
 		{
 			name:    "-i short form normalizes to --index-url",
 			content: "-i https://i/simple",
-			want:    []OptionEntry{{Name: "--index-url", Value: "https://i/simple"}},
+			want:    []OptionEntry{{Name: "--index-url", Value: "https://i/simple", Source: Source{Line: 1}}},
 		},
 		{
 			name:    "--index-url= form",
 			content: "--index-url=https://i",
-			want:    []OptionEntry{{Name: "--index-url", Value: "https://i"}},
+			want:    []OptionEntry{{Name: "--index-url", Value: "https://i", Source: Source{Line: 1}}},
 		},
 		{
 			name:    "--no-index is boolean",
 			content: "--no-index",
-			want:    []OptionEntry{{Name: "--no-index", Value: ""}},
+			want:    []OptionEntry{{Name: "--no-index", Value: "", Source: Source{Line: 1}}},
 		},
 		{
 			name:    "--find-links repeated across lines",
 			content: "--find-links a\n--find-links b",
-			want:    []OptionEntry{{Name: "--find-links", Value: "a"}, {Name: "--find-links", Value: "b"}},
+			want:    []OptionEntry{{Name: "--find-links", Value: "a", Source: Source{Line: 1}}, {Name: "--find-links", Value: "b", Source: Source{Line: 2}}},
 		},
 	}
 	for _, c := range cases {
@@ -189,7 +189,7 @@ func TestParse_UnknownFlag(t *testing.T) {
 
 	oe, ok := f.Entries[0].(*OptionEntry)
 	require.True(t, ok, "want *OptionEntry, got %T", f.Entries[0])
-	assert.Equal(t, OptionEntry{Name: "--frobnicate", Value: "1"}, *oe)
+	assert.Equal(t, OptionEntry{Name: "--frobnicate", Value: "1", Source: Source{Line: 1}}, *oe)
 
 	f, err = Parse("--frob foo")
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestParse_UnknownFlag(t *testing.T) {
 
 	oe, ok = f.Entries[0].(*OptionEntry)
 	require.True(t, ok, "entry 0: want *OptionEntry, got %T", f.Entries[0])
-	assert.Equal(t, OptionEntry{Name: "--frob", Value: ""}, *oe)
+	assert.Equal(t, OptionEntry{Name: "--frob", Value: "", Source: Source{Line: 1}}, *oe)
 
 	re, ok := f.Entries[1].(*RequirementEntry)
 	require.True(t, ok, "entry 1: want *RequirementEntry, got %T", f.Entries[1])
@@ -219,9 +219,13 @@ func TestParse_Hashes(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidRequirementsFile)
 
-	_, err = Parse("--hash=sha256:x")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidRequirementsFile)
+	// A standalone --hash is NOT an error: pip logs "line %s has --hash but no
+	// requirement, and will be ignored" and carries on, so a file containing one
+	// installs fine. It surfaces as a file-level option instead; see
+	// TestStandaloneHash_IsNotAnError.
+	f, err = Parse("--hash=sha256:x")
+	require.NoError(t, err)
+	assert.Empty(t, f.Requirements())
 }
 
 func TestParse_ConfigSettings(t *testing.T) {
@@ -232,7 +236,7 @@ func TestParse_ConfigSettings(t *testing.T) {
 	re, ok := f.Entries[0].(*RequirementEntry)
 	require.True(t, ok, "want *RequirementEntry, got %T", f.Entries[0])
 	require.Len(t, re.Options, 1)
-	assert.Equal(t, OptionEntry{Name: "--config-settings", Value: "x=y"}, re.Options[0])
+	assert.Equal(t, OptionEntry{Name: "--config-settings", Value: "x=y", Source: Source{Line: 1}}, re.Options[0])
 }
 
 func TestParse_BareArchiveIsUnnamed(t *testing.T) {

@@ -1,6 +1,6 @@
 module github.com/posit-dev/go-python-packaging
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/bradleyjkemp/cupaloy v2.3.0+incompatible
@@ -9,7 +9,7 @@ require (
 	github.com/samber/lo v1.53.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.55.0
-	golang.org/x/text v0.41.0
+	golang.org/x/text v0.42.0
 	pgregory.net/rapid v1.3.0
 )
 

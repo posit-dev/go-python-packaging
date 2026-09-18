@@ -9,6 +9,8 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-18
+
 ### Added
 
 - `wheelname`: **`ParseTags` reads a wheel's compatibility tags without requiring

@@ -9,6 +9,31 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- `wheelname`: **`ParseTags` reads a wheel's compatibility tags without requiring
+  its version to parse**, returning a `WheelTags` of name, build tag and tags.
+
+  `Parse` rejects the whole filename when only the version segment fails PEP 440,
+  and the version contributes nothing to a PEP 425 tag. PEP 427 escapes runs of
+  non-alphanumeric characters to `_`, so a legal local version like `1.0+cpu`
+  reaches disk as `1.0_cpu` and does not parse. Measured over a full-corpus sweep
+  of 14.3M mirrored PyPI wheels, 221 of the 299 rejected filenames failed on the
+  version alone with their tags fully readable — and that silently understated
+  real platform compatibility for the affected releases.
+
+  Un-escaping inside `Parse` was considered and rejected: the escaping is not
+  losslessly invertible. Both `2.5.0+post1_cpu` and `2.5.0_post1+cpu` parse from
+  the escaped `2.5.0_post1_cpu` and only the second is correct, so un-escaping
+  would return a plausible wrong version with no error. `Parse`'s behaviour is
+  unchanged.
+
+  ⚠️ One trade-off worth knowing: dropping version validation also drops the only
+  signal that rejected some malformed names. `too-few-py3-none-any.whl` has five
+  fields and `few` where a version belongs, so `ParseTags` accepts it while
+  `Parse` does not. Re-validating the version to close that gap would defeat the
+  function's purpose. Use `Parse` when you need the version.
+
 ## [0.9.0] - 2026-08-28
 
 ### Added

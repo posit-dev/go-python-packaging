@@ -46,6 +46,70 @@ func TestParse_Malformed(t *testing.T) {
 	}
 }
 
+// TestParseTags_RecoversTagsFromAnUnparseableVersion is the point of ParseTags.
+// PEP 427 escapes a local version's "+" to "_", so a legal 2.5.0.post1+cpu is
+// stored as 2.5.0_post1_cpu and fails PEP 440 -- and Parse then discards tags it
+// read perfectly well. The version contributes nothing to a PEP 425 tag.
+func TestParseTags_RecoversTagsFromAnUnparseableVersion(t *testing.T) {
+	for _, name := range []string{
+		"torch-2.5.0_post1_cpu-cp39-cp39-manylinux1_x86_64.whl",
+		"dcnnt-0.3.8fix-py3-none-any.whl",
+	} {
+		_, err := Parse(name)
+		require.Error(t, err, "precondition: Parse must reject %s, or this test proves nothing", name)
+
+		w, err := ParseTags(name)
+		require.NoError(t, err, name)
+		assert.NotEmpty(t, w.Tags, name)
+	}
+}
+
+// TestParseTags_AgreesWithParse guards against the two entry points drifting:
+// they must split a filename identically, differing only in the version.
+func TestParseTags_AgreesWithParse(t *testing.T) {
+	const name = "foo-1.0-1-py2.py3-none-any.whl"
+
+	full, err := Parse(name)
+	require.NoError(t, err)
+	w, err := ParseTags(name)
+	require.NoError(t, err)
+
+	assert.Equal(t, full.Name, w.Name)
+	assert.Equal(t, full.Build, w.Build)
+	assert.Equal(t, full.Tags, w.Tags)
+}
+
+// TestParseTags_StillRejectsRealDefects keeps ParseTags from degenerating into a
+// parse-anything function. Only the version becomes optional.
+func TestParseTags_StillRejectsRealDefects(t *testing.T) {
+	for _, s := range []string{
+		"nowhlsuffix-1.0-py3-none-any", // no .whl
+		"foo-1.0-x-py3-none-any.whl",   // build tag not digit-led
+		"foo-1.0-py3--any.whl",         // empty ABI field
+	} {
+		_, err := ParseTags(s)
+		require.Error(t, err, s)
+	}
+}
+
+// TestParseTags_AcceptsWhatOnlyTheVersionRejected records the cost of the
+// trade-off, so it is a decision on the record rather than a surprise. A
+// five-field name whose second field is not a version is indistinguishable from
+// a wheel whose version this library cannot parse, so ParseTags accepts it where
+// Parse does not. Re-validating the version to close that gap would defeat the
+// function's entire purpose.
+func TestParseTags_AcceptsWhatOnlyTheVersionRejected(t *testing.T) {
+	const name = "too-few-py3-none-any.whl" // 5 fields; "few" sits where a version goes
+
+	_, err := Parse(name)
+	require.Error(t, err, "Parse rejects it, on the version")
+
+	w, err := ParseTags(name)
+	require.NoError(t, err)
+	assert.Equal(t, "too", w.Name)
+	assert.Equal(t, []tags.Tag{{Interpreter: "py3", ABI: "none", Platform: "any"}}, w.Tags)
+}
+
 func TestCompareBuildTags(t *testing.T) {
 	assert.Negative(t, CompareBuildTags("", "1"))   // absent < present
 	assert.Negative(t, CompareBuildTags("2", "10")) // numeric, not lexical

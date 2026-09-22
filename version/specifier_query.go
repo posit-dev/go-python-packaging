@@ -7,7 +7,7 @@
 // `bool(list(self.filter([item])))` so the two can never disagree.
 //
 // Upstream pinned at 4eb0753dba8fcaaac8eb75463374e448f0931558
-// (pypa/packaging 26.2).
+// (pypa/packaging main, 128 commits after the 26.2 release).
 
 package version
 

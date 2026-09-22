@@ -25,8 +25,10 @@ import (
 )
 
 // UpstreamPackagingSHA is the single pypa/packaging commit every citation
-// comment in this package cites. Update it here first, then re-verify each
-// citation's line range and symbol name before repointing the comment URLs.
+// comment in this package cites: pypa/packaging main, 128 commits after the
+// 26.2 release, not the 26.2 release commit itself. Update it here first,
+// then re-verify each citation's line range and symbol name before
+// repointing the comment URLs.
 const UpstreamPackagingSHA = "4eb0753dba8fcaaac8eb75463374e448f0931558"
 
 var (

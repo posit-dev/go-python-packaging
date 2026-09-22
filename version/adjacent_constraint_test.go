@@ -88,7 +88,8 @@ func TestCommaRequirementDoesNotNarrowValidForms(t *testing.T) {
 		{">= 1.0,", "trailing comma, which upstream also accepts"},
 		// Upstream drops every blank comma-split item, not just a trailing one:
 		// `[s.strip() for s in specifiers.split(",") if s.strip()]` in
-		// SpecifierSet.__init__ (pypa/packaging @ 4eb0753, release 26.2).
+		// SpecifierSet.__init__ (pypa/packaging @ 4eb0753, unchanged since the
+		// 26.2 release).
 		// Verified: SpecifierSet(",>=1") and SpecifierSet(">=1,,<2") both parse,
 		// to lengths 1 and 2.
 		{",>= 1.0", "leading comma, which upstream also accepts"},

@@ -430,7 +430,8 @@ func linuxPlatformTags(t Target) []string {
 //
 // Copying the placeholder rather than inventing our own means we inherit
 // upstream's correction when glibc 3 actually ships. Upstream pinned at
-// 6ce6143ac8eebd91b7b0d38e92618f0702e933af (packaging 26.2).
+// commit 84a87ee42483d7352f9502d78a9553da8859aa7a (the release 26.2 tag's
+// commit).
 const lastGlibcMinor = 50
 
 // glibcVersion is a (major, minor) glibc version used while building the

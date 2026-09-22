@@ -143,25 +143,8 @@ func parseRequirementDetails(t *Tokenizer, req *RawRequirement) error {
 		if t.peek(End) {
 			return nil
 		}
-		// Consume horizontal whitespace and any immediately following line
-		// breaks. PEP 508 requires whitespace after a URL; a newline is valid
-		// (common in "defensively multiline" Requires-Dist metadata) and must
-		// be consumed here so a following "; marker" clause is recognized.
 		if !t.consume(WS) {
-			// No horizontal whitespace found; check for a line break.
-			if t.pos < len(t.source) && (t.source[t.pos] == '\n' || t.source[t.pos] == '\r') {
-				// Consume the line break(s).
-				for t.pos < len(t.source) && (t.source[t.pos] == '\n' || t.source[t.pos] == '\r') {
-					t.pos++
-				}
-			} else {
-				return t.NewSyntaxError("Expected whitespace after URL")
-			}
-		} else {
-			// Consumed horizontal whitespace; also consume any following line breaks.
-			for t.pos < len(t.source) && (t.source[t.pos] == '\n' || t.source[t.pos] == '\r') {
-				t.pos++
-			}
+			return t.NewSyntaxError("Expected whitespace after URL")
 		}
 		if t.peek(End) {
 			return nil

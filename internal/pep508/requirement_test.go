@@ -171,20 +171,41 @@ func TestParseRequirement_URLContainingSemicolon_NoMarker(t *testing.T) {
 	assert.Nil(t, req.Marker)
 }
 
-// --- URL terminates at any whitespace, not just space/tab ---
+// --- URL terminates at horizontal whitespace (space/tab) only, matching
+// upstream's own URL rule ([^ \t]+) - NOT at a line break. This was checked
+// against a real packaging 4eb0753dba8fcaaac8eb75463374e448f0931558 install:
+// Requirement("name @ https://example.com\n").url == "https://example.com\n"
+// (the line break is embedded in the url, not rejected). An older version of
+// this test asserted the opposite (line break treated as a terminator, so
+// a following "; marker" clause still parsed) - that pinned a divergence
+// from upstream, introduced when WS was narrowed to horizontal-only ([ \t]+)
+// without updating the URL rule to match; it is corrected below.
 
-func TestParseRequirement_URLThenNewlineThenMarker_Splits(t *testing.T) {
-	// A defensively-multiline value: the "@ url" clause ends in a newline
-	// rather than a space before "; marker". The URL rule must treat the
-	// newline as a terminator (it is the exact complement of the WS rule,
-	// \s+) so the marker clause is not absorbed into the URL token.
-	req := parseRequirementString(t, "foo @ https://x/y\n; python_version > \"3\"")
-	assert.Equal(t, "https://x/y", req.URL)
-	require.NotNil(t, req.Marker)
-	cmp, ok := req.Marker.(*CompareExpr)
-	require.True(t, ok)
-	assert.Equal(t, EnvVar{Name: "python_version"}, cmp.Lhs)
-	assert.Equal(t, Literal{Value: "3"}, cmp.Rhs)
+func TestParseRequirement_URLForm_BareLineBreak_EmbeddedInURL(t *testing.T) {
+	// With nothing following the line break, the whole thing (URL bytes
+	// plus break) has no space/tab in it, so it is ONE greedy URL token and
+	// the requirement parses successfully - matching upstream exactly.
+	for _, lb := range []string{"\n", "\r", "\r\n"} {
+		t.Run(escapeForName(lb), func(t *testing.T) {
+			req := parseRequirementString(t, "foo @ https://x/y"+lb)
+			assert.Equal(t, "https://x/y"+lb, req.URL)
+			assert.Nil(t, req.Marker)
+		})
+	}
+}
+
+func TestParseRequirement_URLForm_LineBreakBeforeMarker_SwallowsSemicolonIntoURL(t *testing.T) {
+	// The line break is not a delimiter, so it - and the following ";" -
+	// are absorbed into the URL token, right up to the next space. That
+	// consumes the marker clause's required ";", leaving the marker's own
+	// text (which contains spaces) as unparsable trailing garbage.
+	for _, lb := range []string{"\n", "\r", "\r\n"} {
+		t.Run(escapeForName(lb), func(t *testing.T) {
+			tok := NewTokenizer("foo @ https://x/y" + lb + `; python_version > "3"`)
+			_, err := ParseRequirement(tok)
+			require.Error(t, err, "line break then marker should not parse (semicolon is swallowed into the URL)")
+		})
+	}
 }
 
 // --- grammar asymmetry: url form requires wsp+ before ";" marker ---
@@ -203,6 +224,19 @@ func TestParseRequirement_URLForm_SpaceBeforeMarker_Splits(t *testing.T) {
 	req := parseRequirementString(t, `foo@https://x/y ;python_version>"3"`)
 	assert.Equal(t, "https://x/y", req.URL)
 	require.NotNil(t, req.Marker)
+}
+
+// A trailing horizontal space or tab after the URL (nothing else follows)
+// still terminates the URL correctly and parses, mirroring upstream's
+// test_trailing_horizontal_whitespace (which only covers the name form).
+func TestParseRequirement_URLForm_AllowsTrailingHorizontalWhitespace(t *testing.T) {
+	for _, ws := range []string{" ", "\t", " \t"} {
+		t.Run(escapeForName(ws), func(t *testing.T) {
+			req := parseRequirementString(t, "foo @ https://x/y"+ws)
+			assert.Equal(t, "https://x/y", req.URL)
+			assert.Nil(t, req.Marker)
+		})
+	}
 }
 
 // --- combinations ---

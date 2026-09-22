@@ -81,6 +81,16 @@ func TestCheck_QuotedString_Unterminated(t *testing.T) {
 	assert.False(t, tok.check(QuotedString))
 }
 
+func TestUnquoted_DoesNotDecodeEscapes(t *testing.T) {
+	// Unquoted stays a raw, tokenizer-level accessor: escape decoding
+	// happens one call away, at Unquoted's only production call site (see
+	// decodeQuotedStringContents in marker.go, and Unquoted's doc comment).
+	tok := NewTokenizer(`"a\nb"`)
+	require.True(t, tok.check(QuotedString))
+	got := tok.read()
+	assert.Equal(t, `a\nb`, got.Unquoted())
+}
+
 // --- WS handling ---
 
 func TestConsume_WS_SkipsWhitespace(t *testing.T) {

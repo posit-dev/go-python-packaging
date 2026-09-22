@@ -45,8 +45,8 @@ const (
 	// ('[^']*' / "[^"]*"), so a double-quoted string may embed unescaped
 	// single quotes and vice versa, and a backslash tokenizes fine.
 	// Upstream then validates the token via ast.literal_eval, i.e. Python
-	// string escapes ARE meaningful on input; see validateQuotedStringContents
-	// in marker.go for the subset we validate.
+	// string escapes ARE meaningful on input; see decodeQuotedStringContents
+	// in marker.go, which decodes and validates them.
 	QuotedString
 	// End matches only at the end of the source (zero-width).
 	End
@@ -142,12 +142,12 @@ type Token struct {
 }
 
 // Unquoted returns a QuotedString token's value with its surrounding quote
-// characters stripped. No escape processing is performed: while
-// pypa/packaging calls ast.literal_eval on the token to decode Python
-// string-literal escapes (\n, \\, \x41, etc.), we deliberately do not
-// implement full escape decoding here (out of scope). We validate only the
-// two specific malformed cases upstream asserts in tests: a trailing unpaired
-// backslash and a truncated \x escape.
+// characters stripped. No escape processing is performed here - Unquoted
+// stays a raw, tokenizer-level accessor, matching packaging's Token.text[1:-1]
+// slice. Python string-literal escape decoding (\n, \\, \x41, etc.), which
+// pypa/packaging performs via ast.literal_eval, happens one call away at
+// Unquoted's only production call site: see decodeQuotedStringContents in
+// marker.go.
 func (t Token) Unquoted() string {
 	if len(t.Text) < 2 {
 		return t.Text

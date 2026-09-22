@@ -222,3 +222,153 @@ func TestLiteral_String_UsesSingleQuoteWhenValueContainsDoubleQuote(t *testing.T
 	lit := Literal{Value: `has "quote"`}
 	assert.Equal(t, `'has "quote"'`, lit.String())
 }
+
+// --- Escape decoding (#19401) ---
+//
+// Boundary cases below were verified by hand against packaging 26.2's
+// process_python_str (_parser.py) and QUOTED_STRING (_tokenizer.py) - via
+// ast.literal_eval, which process_python_str essentially is - since this
+// task was scoped without direct access to packaging's own test suite
+// (tests/test_markers.py / test_tokenizer.py). No pinned SHA is cited for
+// this specific escape-handling table for that reason; contrast
+// grammar_conformance_test.go, whose requirement-parsing ports ARE pinned to
+// a verified SHA.
+
+func TestDecodeQuotedStringContents_Accepts(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"doubled_backslash_then_U", `C:\\U`, `C:\U`},
+		{"newline", `\n`, "\n"},
+		{"tab", `\t`, "\t"},
+		{"carriage_return", `\r`, "\r"},
+		{"nul_octal", `\0`, "\x00"},
+		{"escaped_single_quote", `\'`, `'`},
+		{"escaped_double_quote", `\"`, `"`},
+		{"alert", `\a`, "\a"},
+		{"backspace", `\b`, "\b"},
+		{"form_feed", `\f`, "\f"},
+		{"vertical_tab", `\v`, "\v"},
+		{"hex_escape", `\x41`, "A"},
+		{"hex_escape_high_byte", `\xFF`, "\u00FF"},
+		{"unicode_escape", `\u0041`, "A"},
+		{"unicode_escape_wide", `\U0001F600`, "\U0001F600"},
+		{"octal_two_digit", `\101`, "A"},             // 0o101 == 65 == 'A'
+		{"octal_three_digit_wide", `\401`, "\u0101"}, // 0o401 == 257
+		{"octal_single_digit", `\7`, "\a"},           // 0o7 == 7 == BEL
+		{"octal_greedy_stops_at_non_octal", `\1a`, "\x01a"},
+		// Regression guard: an escaped backslash ("\\") consumes BOTH its
+		// source bytes as one unit, so the "x41"/"x" that follows is
+		// literal characters, not a fresh \x escape. A validator that scans
+		// for "\x" independently of consumed "\\" pairs misreads this as a
+		// truncated \x escape and wrongly rejects it - the regression
+		// #18640's review caught; see decodeQuotedStringContents's doc
+		// comment in marker.go for why a single pass avoids it.
+		{"doubled_backslash_before_x_regression", `C:\\x41`, `C:\x41`},
+		{"doubled_backslash_before_x_short", `\\x`, `\x`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := decodeQuotedStringContents(c.in)
+			require.NoError(t, err, "input %q should decode", c.in)
+			assert.Equal(t, c.want, got, "input %q", c.in)
+		})
+	}
+}
+
+func TestDecodeQuotedStringContents_Rejects(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"trailing_unpaired_backslash", `C:\`},
+		{"truncated_hex_empty", `\x`},
+		{"truncated_hex_one_digit", `\x4`},
+		{"truncated_hex_bad_digit", `\xZZ`},
+		{"truncated_unicode_empty", `\u`},
+		{"truncated_unicode_short", `\u123`},
+		{"truncated_unicode_wide_empty", `\U`},
+		{"truncated_unicode_wide_short", `\U1234567`},
+		{"unicode_wide_out_of_range", `\U00110000`},
+		{"invalid_octal_digit_8", `\8`},
+		{"invalid_octal_digit_9", `\9`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := decodeQuotedStringContents(c.in)
+			require.Error(t, err, "input %q should be rejected", c.in)
+			assert.Contains(t, err.Error(), "Invalid quoted string")
+		})
+	}
+}
+
+// TestDecodeQuotedStringContents_RoundTripIsIdempotent checks that decoding
+// is a pure, deterministic function: re-encoding a decoded value back into
+// an escaped literal body and decoding it again reproduces the same value,
+// and decoding the same input twice never differs.
+func TestDecodeQuotedStringContents_RoundTripIsIdempotent(t *testing.T) {
+	cases := []string{
+		`C:\\U`,
+		`\n\t\r`,
+		`\x41\u0041\U0001F600`,
+		`\101\7`,
+		`C:\\x41`,
+		`it's "fine"`,
+		`plain text, no escapes`,
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			decoded1, err := decodeQuotedStringContents(in)
+			require.NoError(t, err)
+
+			reencoded := escapeBackslashesAndQuotes(decoded1)
+			decoded2, err := decodeQuotedStringContents(reencoded)
+			require.NoError(t, err)
+			assert.Equal(t, decoded1, decoded2, "decoding must be stable across a round trip")
+
+			decodedAgain, err := decodeQuotedStringContents(in)
+			require.NoError(t, err)
+			assert.Equal(t, decoded1, decodedAgain, "decoding the same input twice must agree")
+		})
+	}
+}
+
+// escapeBackslashesAndQuotes re-encodes a decoded string value into a
+// Python-style escaped literal body, for
+// TestDecodeQuotedStringContents_RoundTripIsIdempotent. It only needs to
+// handle what decodeQuotedStringContents can itself produce (a bare
+// backslash or quote character), since every other decoded rune requires no
+// escape to round-trip.
+func escapeBackslashesAndQuotes(s string) string {
+	out := ""
+	for _, r := range s {
+		switch r {
+		case '\\':
+			out += `\\`
+		case '\'':
+			out += `\'`
+		case '"':
+			out += `\"`
+		default:
+			out += string(r)
+		}
+	}
+	return out
+}
+
+// --- Escape decoding, via the public marker-parsing surface ---
+
+func TestParseMarker_QuotedStringLiteralDecodesEscapes(t *testing.T) {
+	expr := parseFullMarkerString(t, `os_name == "line\nbreak"`)
+	cmp, ok := expr.(*CompareExpr)
+	require.True(t, ok)
+	assert.Equal(t, Literal{Value: "line\nbreak"}, cmp.Rhs)
+}
+
+func TestParseMarker_QuotedStringRejectsMalformedUnicodeEscape(t *testing.T) {
+	tok := NewTokenizer(`os_name == "\u12"`)
+	_, err := ParseMarker(tok)
+	assert.Error(t, err)
+}

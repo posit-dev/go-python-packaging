@@ -4,6 +4,7 @@ package pep508
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/posit-dev/go-python-packaging/extras"
@@ -130,8 +131,8 @@ func (l Literal) String() string { return quoteLiteral(l.Value) }
 //
 // Note this is about what we emit, not what we accept: upstream runs the token
 // through ast.literal_eval, so Python string escapes ARE valid on input (see
-// Token.Unquoted and validateQuotedStringContents). Do not use this comment as
-// grounds for removing the escape validation.
+// Token.Unquoted and decodeQuotedStringContents). Do not use this comment as
+// grounds for removing the escape decoding/validation.
 func quoteLiteral(v string) string {
 	if strings.Contains(v, `"`) {
 		return "'" + v + "'"
@@ -318,12 +319,8 @@ func parseMarkerVar(t *Tokenizer) (Operand, error) {
 	}
 	if t.check(QuotedString) {
 		tok := t.read()
-		val := tok.Unquoted()
-		// Upstream calls ast.literal_eval on the token, which rejects
-		// malformed escape sequences. We validate only the two specific
-		// cases upstream asserts in tests: a trailing unpaired backslash
-		// (the closing quote is "escaped"), and a truncated \x escape.
-		if err := validateQuotedStringContents(val); err != nil {
+		val, err := decodeQuotedStringContents(tok.Unquoted())
+		if err != nil {
 			return nil, t.NewSyntaxErrorAt(err.Error(), tok.Pos, tok.Pos+len(tok.Text))
 		}
 		return Literal{Value: val}, nil
@@ -354,44 +351,158 @@ func parseMarkerOp(t *Tokenizer) (CompareOp, error) {
 	return "", t.NewSyntaxError("Expected marker operator, one of <=, <, !=, ==, >=, >, ~=, ===, in, not in")
 }
 
-// validateQuotedStringContents checks for the two specific malformed escape
-// cases that upstream's ast.literal_eval rejects: a trailing unpaired
-// backslash, and a truncated \x escape (not followed by two hex digits).
-// Returning nil means the string is valid (or contains other escape sequences
-// we do not validate). A non-nil error's message is "Invalid quoted string",
-// matching upstream.
-// It walks the string ONCE, left to right, consuming each escape sequence as a
-// unit. A single pass is required, not two independent scans: an escaped
-// backslash consumes BOTH of its bytes, so `\\x` is a complete pair followed by
-// a literal "x" -- not a truncated \x escape. Scanning for `\x` separately from
-// the trailing-backslash check has no way to know which backslashes were
-// already consumed, and falsely rejects `"C:\\xyz"`, `"a\\x"`, and `"\\x"` --
-// all of which upstream accepts.
-func validateQuotedStringContents(s string) error {
-	for i := 0; i < len(s); i++ {
-		if s[i] != '\\' {
+// decodeQuotedStringContents decodes s - a QuotedString token's contents,
+// already stripped of its surrounding quote characters by Token.Unquoted -
+// as a Python string literal, mirroring upstream's process_python_str
+// (_parser.py), which is essentially ast.literal_eval. Decoding and
+// validation happen together: a malformed escape is a validation failure
+// with the message "Invalid quoted string" (matching upstream), and every
+// other backslash is replaced by the value it escapes.
+//
+// It walks s ONCE, left to right, consuming each escape sequence as a single
+// unit and advancing its cursor past whichever it just consumed. A single
+// pass is required, not a validate-then-decode split: an escaped backslash
+// ("\\") consumes BOTH of its source bytes as one unit, so "C:\\x41" is a
+// "\\" pair (decoding to one literal backslash) followed by the three
+// literal characters "x41" -- not a truncated "\x" hex escape. A second,
+// independent scan for "\x" has no way to know that the preceding backslash
+// was already consumed as half of a "\\" pair, and would misdecode this case
+// (this is the exact bug an earlier two-pass implementation had; see the
+// "doubled_backslash_before_x" cases in TestDecodeQuotedStringContents_Accepts).
+//
+// Recognized escapes, matching Python's string-literal grammar
+// (https://docs.python.org/3/reference/lexical_analysis.html#string-and-bytes-literals):
+// \\, \', \", the single-character escapes \a \b \f \n \r \t \v, \xHH
+// (exactly 2 hex digits), \uHHHH (exactly 4 hex digits), \UHHHHHHHH (exactly
+// 8 hex digits, rejected if the value exceeds U+10FFFF), and \OOO octal
+// escapes (1-3 octal digits, consumed greedily). \x/\u/\U/octal all decode to
+// the Unicode code point with that numeric value (not a raw byte) - e.g.
+// "\xFF" decodes to U+00FF, encoded as the two UTF-8 bytes C3 BF, matching
+// CPython. Any other backslash - one at end-of-string, one followed by a
+// digit outside 0-7, or a truncated hex/unicode escape - is a validation
+// failure.
+//
+// Verified by hand against packaging 26.2's _parser.py
+// (process_python_str/parse_marker_var) and _tokenizer.py (QUOTED_STRING),
+// not against packaging's test suite directly (no repo access at
+// implementation time).
+//
+// Two gaps, neither exercised by this issue's boundary table: \N{...} named
+// escapes are rejected here (upstream's ast.literal_eval accepts them, but
+// supporting them needs the Unicode name database, which is out of scope for
+// a marker string); and a decoded lone surrogate (U+D800-U+DFFF) from \u/\U,
+// which Python permits in a str but which Go's utf8/strings.Builder cannot
+// represent - strings.Builder.WriteRune substitutes U+FFFD instead.
+func decodeQuotedStringContents(s string) (string, error) {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c != '\\' {
+			b.WriteByte(c)
+			i++
 			continue
 		}
-		// A backslash at the very end is unpaired: the escape is unterminated.
-		// This is upstream's `"C:\"` case.
 		if i+1 >= len(s) {
-			return &SyntaxError{Msg: "Invalid quoted string"}
+			// A backslash at the very end is unpaired: the escape is
+			// unterminated. This is upstream's `"C:\"` case.
+			return "", errInvalidQuotedString()
 		}
-		if s[i+1] == 'x' {
-			// \x requires exactly two hex digits. This is upstream's `"\x"`
-			// (and `"\x4"`, `"\xZZ"`) case.
-			if i+3 >= len(s) || !isHexDigit(s[i+2]) || !isHexDigit(s[i+3]) {
-				return &SyntaxError{Msg: "Invalid quoted string"}
+		next := s[i+1]
+		switch {
+		case next == '\\' || next == '\'' || next == '"':
+			b.WriteByte(next)
+			i += 2
+		case next == 'a':
+			b.WriteByte('\a')
+			i += 2
+		case next == 'b':
+			b.WriteByte('\b')
+			i += 2
+		case next == 'f':
+			b.WriteByte('\f')
+			i += 2
+		case next == 'n':
+			b.WriteByte('\n')
+			i += 2
+		case next == 'r':
+			b.WriteByte('\r')
+			i += 2
+		case next == 't':
+			b.WriteByte('\t')
+			i += 2
+		case next == 'v':
+			b.WriteByte('\v')
+			i += 2
+		case next == 'x':
+			v, err := decodeFixedHexEscape(s, i+2, 2)
+			if err != nil {
+				return "", err
 			}
-			i += 3 // consume \xNN
-			continue
+			b.WriteRune(rune(v))
+			i += 4
+		case next == 'u':
+			v, err := decodeFixedHexEscape(s, i+2, 4)
+			if err != nil {
+				return "", err
+			}
+			b.WriteRune(rune(v))
+			i += 6
+		case next == 'U':
+			v, err := decodeFixedHexEscape(s, i+2, 8)
+			if err != nil {
+				return "", err
+			}
+			if v > 0x10FFFF {
+				return "", errInvalidQuotedString()
+			}
+			b.WriteRune(rune(v))
+			i += 10
+		case next >= '0' && next <= '7':
+			v, n := decodeOctalEscape(s, i+1)
+			b.WriteRune(rune(v))
+			i += 1 + n
+		default:
+			return "", errInvalidQuotedString()
 		}
-		// Any other escape (including \\, \n, \t, \', \") consumes exactly two
-		// bytes. We deliberately do not validate \u/\U/octal -- see the package
-		// note on why full Python escape semantics are out of scope.
-		i++
 	}
-	return nil
+	return b.String(), nil
+}
+
+// decodeFixedHexEscape parses exactly width hex digits at s[start:start+width]
+// and returns their numeric value, for the \x (width 2), \u (width 4), and \U
+// (width 8) escapes. An error means the escape is truncated: fewer than
+// width hex digits are available before the string ends.
+func decodeFixedHexEscape(s string, start, width int) (uint64, error) {
+	if start+width > len(s) {
+		return 0, errInvalidQuotedString()
+	}
+	for i := 0; i < width; i++ {
+		if !isHexDigit(s[start+i]) {
+			return 0, errInvalidQuotedString()
+		}
+	}
+	// The preceding loop already confirmed width hex digits, so this cannot
+	// fail to parse or overflow (width is at most 8, well within uint64).
+	v, _ := strconv.ParseUint(s[start:start+width], 16, 64)
+	return v, nil
+}
+
+// decodeOctalEscape parses 1-3 octal digits starting at s[start] (which the
+// caller has already confirmed is an octal digit), stopping at the first
+// non-octal-digit byte or after 3 digits - Python's octal escape is greedy
+// and variable-width, unlike \x/\u/\U's fixed width. It returns the escape's
+// numeric value and how many digits (1-3) it consumed.
+func decodeOctalEscape(s string, start int) (value uint64, n int) {
+	end := start
+	for end < len(s) && end < start+3 && s[end] >= '0' && s[end] <= '7' {
+		end++
+	}
+	v, _ := strconv.ParseUint(s[start:end], 8, 64)
+	return v, end - start
+}
+
+func errInvalidQuotedString() error {
+	return &SyntaxError{Msg: "Invalid quoted string"}
 }
 
 func isHexDigit(c byte) bool {

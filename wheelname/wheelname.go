@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/utils.py's
+// parse_wheel_filename, used under the Apache License, Version 2.0
+// (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and
+// copyright detail).
+// Changed: translated from Python's regex-based filename split into Go's
+// strings.Split/CutSuffix; parse_wheel_filename raises InvalidWheelFilename,
+// this returns (WheelFilename, error) instead.
+
 package wheelname
 
 import (

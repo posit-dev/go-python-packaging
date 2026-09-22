@@ -1,4 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically
+// src/packaging/version.py's letter-normalization table (the pre-release and
+// post-release spelling aliases, now merged upstream into a single
+// _LETTER_NORMALIZATION dict), _parse_letter_version's implicit-post-release
+// branch, and _cmpkey's dev-only pre-release ranking, used under the Apache
+// License, Version 2.0 (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE
+// for full license and copyright detail).
+// Changed: translated from Python to Go. The two alias maps below stay split
+// into preReleaseAliases/postReleaseAliases instead of upstream's single
+// merged dict, and each also carries identity entries ("a"->"a", "rc"->"rc")
+// that upstream omits because its canonical spellings already match.
 
 package version
 
@@ -11,11 +24,19 @@ import (
 	"github.com/rstudio/go-version/pkg/part"
 )
 
+// UpstreamPackagingSHA is the single pypa/packaging commit every citation
+// comment in this package cites. Update it here first, then re-verify each
+// citation's line range and symbol name before repointing the comment URLs.
+const UpstreamPackagingSHA = "4eb0753dba8fcaaac8eb75463374e448f0931558"
+
 var (
 	// The compiled regular expression used to test the validity of a version.
 	versionRegex *regexp.Regexp
 
-	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/version.py#L459-L464
+	// Ported from pypa/packaging src/packaging/version.py, module-level
+	// _LETTER_NORMALIZATION (the pre-release rows: alpha, beta, c, pre, preview).
+	// Pinned: see UpstreamPackagingSHA (L53-L57 at that commit).
+	// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/src/packaging/version.py#L53-L57
 	preReleaseAliases = map[string]string{
 		"a":       "a",
 		"alpha":   "a",
@@ -27,7 +48,10 @@ var (
 		"preview": "rc",
 	}
 
-	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/version.py#L465-L466
+	// Ported from pypa/packaging src/packaging/version.py, module-level
+	// _LETTER_NORMALIZATION (the post-release rows: rev, r).
+	// Pinned: see UpstreamPackagingSHA (L58-L59 at that commit).
+	// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/src/packaging/version.py#L58-L59
 	postReleaseAliases = map[string]string{
 		"post": "post",
 		"rev":  "post",
@@ -213,7 +237,10 @@ func Parse(v string) (Version, error) {
 		case "post_l":
 			postL = part.String(postReleaseAliases[strings.ToLower(m)])
 		case "post_n1", "post_n2":
-			// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/version.py#L469-L472
+			// Ported from pypa/packaging src/packaging/version.py,
+			// _parse_letter_version's implicit-post-release branch.
+			// Pinned: see UpstreamPackagingSHA (L1141-L1144 at that commit).
+			// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/src/packaging/version.py#L1141-L1144
 			if postL == "" {
 				postL = "post"
 			}
@@ -259,7 +286,9 @@ func Parse(v string) (Version, error) {
 	}, nil
 }
 
-// ref. https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/version.py#L495
+// Ported from pypa/packaging src/packaging/version.py's _cmpkey.
+// Pinned: see UpstreamPackagingSHA (L1178 at that commit).
+// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/src/packaging/version.py#L1178
 func cmpkey(epoch part.BigInt, release []part.BigInt, pre, post, dev letterNumber, local string) key {
 	// Set default values
 	k := key{
@@ -273,7 +302,10 @@ func cmpkey(epoch part.BigInt, release []part.BigInt, pre, post, dev letterNumbe
 	// Remove trailing zeros
 	k.release = part.BigIntSliceToParts(release).Normalize()
 
-	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/version.py#L514-L517
+	// Ported from pypa/packaging src/packaging/version.py, _cmpkey's
+	// dev-only / no-pre-release rank assignment.
+	// Pinned: see UpstreamPackagingSHA (L1230-L1234 at that commit).
+	// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/src/packaging/version.py#L1230-L1234
 	if pre.isNull() && post.isNull() && !dev.isNull() {
 		k.pre = part.NegativeInfinity
 	} else if pre.isNull() {

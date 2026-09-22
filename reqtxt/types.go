@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pip
+// (https://github.com/pypa/pip), specifically the include-following
+// bookkeeping (nested_constraint, source file tracking) of
+// pip/_internal/req/req_file.py's RequirementsFileParser._parse_and_recurse,
+// used under the MIT license; see NOTICE for full license and copyright
+// detail.
+// Changed: translated from Python's parser-instance state into explicit Go
+// struct fields (UnnamedEntry, OptionEntry) carried on each entry value.
 
 package reqtxt
 

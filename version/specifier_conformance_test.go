@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically tests/test_specifiers.py's
+// TestSpecifier class, used under the Apache License, Version 2.0
+// (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and
+// copyright detail).
+// Changed: translated from Python/pytest to Go table-driven tests; see the
+// divergence notes below for cases where the Go expectation intentionally
+// differs from upstream's literal assertion.
 
 // Conformance tables ported from pypa/packaging's tests/test_specifiers.py,
 // one Go table per upstream test function. This file contains ONLY cases

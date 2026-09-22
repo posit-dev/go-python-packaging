@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/_tokenizer.py's
+// Tokenizer, Token, ParserSyntaxError, and DEFAULT_RULES, used under the
+// Apache License, Version 2.0 (dual-licensed Apache-2.0 OR BSD-2-Clause; see
+// NOTICE for full license and copyright detail).
+// Changed: translated from Python's re.match-at-position calls into Go's
+// regexp.FindStringIndex on a byte-offset substring; DEFAULT_RULES' string
+// keys become a typed Kind enum, and ParserSyntaxError becomes *SyntaxError
+// returned as a Go error rather than raised.
 
 package pep508
 

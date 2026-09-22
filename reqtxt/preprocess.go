@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pip
+// (https://github.com/pypa/pip), specifically pip/_internal/req/req_file.py's
+// COMMENT_RE, ENV_VAR_RE, join_lines, and the preprocess line-joining
+// pipeline, used under the MIT license; see NOTICE for full license and
+// copyright detail.
+// Changed: translated from Python to Go; join_lines' backslash-continuation
+// guard is expressed with explicit byte-offset scanning instead of Python's
+// regex match objects.
 
 package reqtxt
 

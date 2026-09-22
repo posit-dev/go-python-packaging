@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/twine
+// (https://github.com/pypa/twine), Copyright (c) 2013 Donald Stufft and
+// individual contributors and Copyright (c) 2015 Ian Cordasco, specifically
+// its upload command's find_dists and group_wheel_files_first
+// (findDistributions and groupWheelFilesFirst below), used under the Apache
+// License, Version 2.0. See NOTICE for full license and copyright detail.
+// Changed: translated from Python to Go; findDistributions/Parse return Go
+// errors instead of raising, and glob expansion goes through filepath.Glob
+// instead of Python's glob.glob.
 
 package distribution
 

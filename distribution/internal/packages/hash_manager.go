@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/twine
+// (https://github.com/pypa/twine), Copyright (c) 2013 Donald Stufft and
+// individual contributors and Copyright (c) 2015 Ian Cordasco, specifically
+// its HashManager class (md5/sha256/blake2 digests computed over chunked
+// file reads), used under the Apache License, Version 2.0. See NOTICE for
+// full license and copyright detail.
+// Changed: translated from Python's hashlib/hashlib.blake2b to Go's
+// crypto/md5, crypto/sha256, and golang.org/x/crypto/blake2b; nil-receiver
+// guards on md5Hasher/blake2Hasher replace Python's Optional handling.
 
 package packages
 

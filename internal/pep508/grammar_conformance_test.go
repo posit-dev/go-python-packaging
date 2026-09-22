@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file port test cases from pypa/packaging
+// (https://github.com/pypa/packaging), specifically
+// tests/test_requirements.py's class TestRequirementParsing, used under the
+// Apache License, Version 2.0 (dual-licensed Apache-2.0 OR BSD-2-Clause; see
+// NOTICE for full license and copyright detail).
+// Changed: translated from Python/pytest parametrized cases into Go
+// table-driven subtests; case selection and pin SHA are noted per-test below.
 
 package pep508
 

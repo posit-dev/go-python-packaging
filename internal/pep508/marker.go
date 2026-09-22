@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/_parser.py's
+// marker productions (_parse_marker and friends) and process_env_var, used
+// under the Apache License, Version 2.0 (dual-licensed Apache-2.0 OR
+// BSD-2-Clause; see NOTICE for full license and copyright detail).
+// Changed: translated the recursive-descent parser from Python's generator-
+// based token iteration into Go functions returning (Expr, error); "and"/
+// "or" precedence grouping, built implicitly by upstream's AST shape, is
+// rebuilt explicitly here.
 
 package pep508
 

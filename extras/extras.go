@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/utils.py's
+// canonicalize_name, used under the Apache License, Version 2.0
+// (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and
+// copyright detail).
+// Changed: translated from a single re.sub regex into an explicit
+// rune-by-rune loop, since extra-name normalization sits on a
+// per-dependency hot path; behavior (lowercase, collapse -/_/. runs to one
+// "-") is unchanged.
 
 package extras
 

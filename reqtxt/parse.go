@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pip
+// (https://github.com/pypa/pip), specifically pip/_internal/req/req_file.py's
+// SUPPORTED_OPTIONS, SUPPORTED_OPTIONS_REQ, break_args_options, and
+// process_line, used under the MIT license; see NOTICE for full license and
+// copyright detail.
+// Changed: translated from Python's optparse-based option handling into
+// explicit Go dispatch functions; pip's non-fatal warnings (e.g. --hash with
+// no value) are represented as returned errors or dropped values instead.
 
 package reqtxt
 

@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/_parser.py's
+// _parse_requirement and packaging/requirements.py's Requirement, used
+// under the Apache License, Version 2.0 (dual-licensed Apache-2.0 OR
+// BSD-2-Clause; see NOTICE for full license and copyright detail).
+// Changed: translated from Python's exception-raising parse functions into
+// Go functions returning (RawRequirement, error); name canonicalization,
+// extras normalization, and marker evaluation are deferred to the callers
+// in package requirement and package marker rather than done inline here.
 
 package pep508
 

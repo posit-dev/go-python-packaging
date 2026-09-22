@@ -6,7 +6,12 @@ license, at your option. See LICENSE-APACHE and LICENSE-MIT.
 
 The version/ package is derived from rstudio/go-pep440-version, itself a fork of
 aquasecurity/go-pep440-version (https://github.com/aquasecurity/go-pep440-version),
-licensed under the Apache License, Version 2.0.
+Copyright (c) Aqua Security Software Ltd., licensed under the Apache License,
+Version 2.0. The version/ package also directly adapts material from
+pypa/packaging (https://github.com/pypa/packaging); see the version/-specific
+paragraphs below (the letter-normalization tables, cmpkey, the
+specifier-matching helpers, and the conformance test ports) for the exact
+files, symbols, and pinned commit.
 
 The distribution/ package is ported from rstudio/python-distribution-parser
 (https://github.com/rstudio/python-distribution-parser), Copyright (c) 2024
@@ -94,8 +99,14 @@ The requirement/ package adapts the dependency-specifier grammar of
 pypa/packaging (https://github.com/pypa/packaging), specifically
 packaging/_parser.py's `_parse_requirement` and packaging/requirements.py's
 `Requirement`, licensed under the Apache License, Version 2.0; and Astral
-uv's (https://github.com/astral-sh/uv) `uv-pep508` crate, dual-licensed
-under the Apache License, Version 2.0, or the MIT license.
+uv's (https://github.com/astral-sh/uv) `uv-pep508` crate. Unlike the rest of
+uv's workspace, `uv-pep508` (and `uv-pep440`) override the workspace license
+per-crate to the Apache License, Version 2.0, or the two-clause BSD license,
+and ship their own License-Apache and License-BSD files; `uv-pep508`'s
+License-BSD reads Copyright (c) 2023 konstin. `uv-pep508` began as konstin's
+independent `pep508_rs` crate, later folded into uv, and pep508_rs's own test
+suite already ported cases from pypa/packaging. Material from `uv-pep508` is
+taken under whichever of its two arms applies.
 
 The marker/ package's Environment platform mapping (os_name, sys_platform,
 platform_system, platform_release, platform_version) adapts the

@@ -67,7 +67,10 @@ func TestParse_LongPreReleaseSpellings(t *testing.T) {
 //	"==1.0preview1" -> "==1.0pre,1"
 //
 // pypa/packaging orders its equivalent alternation longest-before-prefix for
-// this same reason (Python's re is also leftmost-first):
+// this same reason (Python's re is also leftmost-first). Ported from
+// pypa/packaging src/packaging/version.py, _VERSION_PATTERN's pre_l
+// alternation group.
+// Pinned: see UpstreamPackagingSHA (L199 at that commit).
 // https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/src/packaging/version.py#L199
 func TestNewSpecifiers_LongPreReleaseSpellingIsOneSpecifier(t *testing.T) {
 	tests := []struct {

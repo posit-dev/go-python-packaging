@@ -1,4 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from Astral's uv
+// (https://github.com/astral-sh/uv), specifically the uv-configuration
+// crate's TargetTriple (the linux/macos/windows cases of its platform-tag
+// logic, adapted to fill os_name, sys_platform, platform_system,
+// platform_release, and platform_version), used under the Apache License,
+// Version 2.0 (uv workspace dual-licensed Apache-2.0 OR MIT; see NOTICE for
+// full license and copyright detail).
+// Changed: translated from Rust to Go; returns a Go error
+// (ErrUnsupportedTarget) instead of Rust's Result/panic, and reads a
+// tags.Target plus InterpreterIdentity instead of TargetTriple's own enum.
 
 package marker
 

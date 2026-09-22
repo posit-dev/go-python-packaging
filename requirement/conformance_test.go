@@ -1,4 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically
+// tests/test_requirements.py's test_basic_valid_requirement_parsing
+// cross-product parameters and the invalid-requirement cases of class
+// TestRequirementParsing, used under the Apache License, Version 2.0
+// (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and
+// copyright detail).
+// Changed: translated from Python/pytest to Go table-driven tests; the
+// parametrize cross-product is expressed as a curated subset with
+// equivalent coverage. See the divergence notes below for cases where the
+// Go expectation intentionally differs from upstream's literal assertion.
 
 // This file contains ONLY cases ported from pypa/packaging's test suite, one
 // Go table per upstream test function. Hand-written cases belong in

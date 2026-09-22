@@ -228,16 +228,14 @@ var tokenRules = map[Kind]*regexp.Regexp{
 	// leftover "=2.0" rather than at the fusion point, which is a worse error
 	// message for the same correct verdict.
 	Specifier: regexp.MustCompile(`\A(?:===\s*[^\s,;)]+|(?:==|~=|!=|<=|>=|<|>)\s*[^\s,;)<>=~]+)`),
-	// URL: a greedy run of non-whitespace characters - the exact
-	// complement of the WS rule above (\s+) - deliberately not bounded by
-	// ";" (see the URL Kind doc comment). Upstream packaging's rule
-	// excludes only space ([^ ]+); this port is stricter, treating all
-	// whitespace (including tab and newlines) as a terminator. That's
-	// safe because a valid URL never contains whitespace, and it avoids
-	// a stray newline (e.g. in a defensively-multiline Requires-Dist
-	// value) being absorbed into the URL along with a following "; marker"
-	// clause.
-	URL: regexp.MustCompile(`\A\S+`),
+	// URL: a greedy run of non-horizontal-whitespace characters, matching
+	// upstream packaging's own URL rule ([^ \t]+) exactly - it stops only
+	// at a space or tab, not at a line break. It is deliberately not
+	// bounded by ";" either (see the URL Kind doc comment): a URL can
+	// itself contain a semicolon (e.g. a query string), so PEP 508 relies
+	// on mandatory whitespace - not a ban on ";" - to separate a URL from
+	// a following "; marker" clause.
+	URL: regexp.MustCompile(`\A[^ \t]+`),
 }
 
 // Tokenizer performs context-sensitive lexing over a PEP 508 source string.

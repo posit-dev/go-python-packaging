@@ -173,3 +173,42 @@ pgregory.net/rapid is licensed under the Mozilla Public License, Version 2.0.
 It is a test-only dependency: internal/proptest contains only _test.go files,
 so rapid does not appear in this module's non-test import graph and is not
 built into any consumer that imports this library.
+
+The marker/ package's conformance tests port the marker evaluation and parse
+cases of pypa/packaging (https://github.com/pypa/packaging), Copyright (c)
+Donald Stufft and individual contributors, specifically tests/test_markers.py's
+classes TestOperatorEvaluation and TestMarker and its module-level and/or
+evaluation tests, pinned at commit 4eb0753dba8fcaaac8eb75463374e448f0931558
+(identical at release 26.3), licensed under the Apache License, Version 2.0.
+Translated from Python/pytest to Go table-driven tests, in
+marker/conformance_test.go. Upstream tests resting on implementation details
+with no counterpart here are not ported, and the reason is recorded in the
+file's header: TestNode, TestDefaultEnvironment (the live interpreter),
+__str__/__repr__/__hash__/__eq__, the operator-overload tests, every
+test_pickle_*, evaluate(context=...), and the set-valued "extras"/
+"dependency_groups" marker variables (PEP 685/735), which this package's
+grammar does not recognize at all. Where a Go expectation differs from
+upstream's literal assertion the divergence is annotated inline at its table.
+
+The extras/ package's conformance tests port the name-canonicalization cases
+of pypa/packaging (https://github.com/pypa/packaging), Copyright (c) Donald
+Stufft and individual contributors, specifically tests/test_utils.py's
+test_canonicalize_name and the non-validating half of
+test_canonicalize_name_invalid, pinned at commit
+4eb0753dba8fcaaac8eb75463374e448f0931558, licensed under the Apache License,
+Version 2.0. Translated from Python/pytest to Go table-driven tests, in
+extras/conformance_test.go.
+
+The internal/pep508 package's error-position conformance tests port input
+strings and caret span offsets - not message text - from Astral uv's
+uv-pep508 crate (https://github.com/astral-sh/uv), specifically
+crates/uv-pep508/src/lib.rs's `mod tests` error_* cases, pinned at commit
+01cb90c1a4f88af09906cb60de9766d2add4a062 (release 0.12.18). uv-pep508
+overrides uv's workspace license to Apache-2.0 OR BSD-2-Clause (Copyright (c)
+2023 konstin) and ships its own license files; this material is taken under
+the Apache-2.0 arm. Translated from Rust/insta snapshots to Go table-driven
+tests, in internal/pep508/error_position_test.go, asserting this package's own
+byte offsets and message text throughout - never uv's prose, and never any
+case behind uv's "non-pep508-extensions" cargo feature (unnamed
+direct-reference requirements, which this module's grammar has no
+counterpart for).

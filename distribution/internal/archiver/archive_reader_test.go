@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/posit-dev/go-python-packaging/distribution/internal/archiver"
@@ -77,4 +78,51 @@ func TestTarReader_ReadFile_FirstEntry(t *testing.T) {
 	got, err := reader.ReadFile("PKG-INFO")
 	require.NoError(t, err)
 	assert.Equal(t, pkgInfoContents, string(got))
+}
+
+// countOpenFDs counts this process's open file descriptors via /dev/fd,
+// which works on both macOS and Linux (CI is ubuntu). It reads names only
+// (not os.ReadDir, which also Lstats each entry): on macOS /dev/fd entries
+// can close between listing and stat, so Lstat there is flaky.
+func countOpenFDs(t *testing.T) int {
+	t.Helper()
+	f, err := os.Open("/dev/fd")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+	names, err := f.Readdirnames(-1)
+	require.NoError(t, err)
+	return len(names)
+}
+
+// TestNewArchiveReader_TarReadCheckFailure_DoesNotLeakFile is a regression
+// test for a bug where NewArchiveReader opened f, then returned early on a
+// tarReadCheck error without closing it.
+func TestNewArchiveReader_TarReadCheckFailure_DoesNotLeakFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("counting descriptors via /dev/fd is not supported on Windows")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.tar.gz")
+
+	// A valid gzip stream with no tar data at all, so gzip.NewReader
+	// succeeds but tarReadCheck's r.Next() fails (io.EOF).
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	gzw := gzip.NewWriter(f)
+	require.NoError(t, gzw.Close())
+	require.NoError(t, f.Close())
+
+	before := countOpenFDs(t)
+
+	// Run several times so a per-call leak accumulates well above noise.
+	for i := 0; i < 5; i++ {
+		_, err := archiver.NewArchiveReader(path)
+		require.Error(t, err)
+	}
+
+	after := countOpenFDs(t)
+	assert.Equal(t, before, after, "NewArchiveReader must not leak an open file when tarReadCheck fails")
 }

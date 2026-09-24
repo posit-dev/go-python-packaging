@@ -27,7 +27,7 @@
 // (see its row below), because uv counts display columns (unicode-width) and
 // we count bytes.
 //
-// # Why 5 pass, 28 are annotated divergences, 7 are skips, and 4 more are skips
+// # Why 5 pass, 30 are annotated divergences, and 10 are skips
 //
 // Every "Expected X" raised by this grammar (NewSyntaxError/expect) is a
 // ZERO-WIDTH point at the parser's cursor - the position where the missing

@@ -9,6 +9,11 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Fixed
+
+- `distribution`: `NewArchiveReader` no longer leaks an open file when a
+  `.tar.gz` holds no readable tar header.
+
 ## [0.10.0] - 2026-09-18
 
 ### Added

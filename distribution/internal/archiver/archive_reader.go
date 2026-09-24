@@ -161,6 +161,10 @@ func NewArchiveReader(fqn string) (ArchiveReader, error) {
 		r := tar.NewReader(gzr)
 		err = tarReadCheck(r)
 		if err != nil {
+			cerr := f.Close()
+			if cerr != nil {
+				log.Printf("error closing file: %v", cerr)
+			}
 			return nil, err
 		}
 		return &tarReader{fqn, f}, nil

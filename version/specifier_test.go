@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically tests/test_specifiers.py's
+// module-level SPECIFIERS list and TestSpecifier.test_specifiers_invalid's
+// case list, used under the Apache License, Version 2.0 (dual-licensed
+// Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and copyright
+// detail).
+// Changed: translated from Python/pytest to Go table-driven tests; the
+// operator-less-specifier case is annotated inline as an intentional R-path
+// divergence rather than ported behavior.
 
 package version
 
@@ -16,7 +26,9 @@ func TestNewConstraints(t *testing.T) {
 		constraint string
 		wantErr    bool
 	}{
-		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L31-L42
+		// Ported from pypa/packaging tests/test_specifiers.py, module-level SPECIFIERS.
+		// Pinned: see UpstreamPackagingSHA (L33-L43 at that commit).
+		// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/tests/test_specifiers.py#L33-L43
 		{"~=2.0", false},
 		{"==2.1.*", false},
 		{"==2.1.0.3", false},
@@ -29,7 +41,12 @@ func TestNewConstraints(t *testing.T) {
 
 		{"===lolwat", false},
 
-		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L50-L86
+		// Ported from pypa/packaging tests/test_specifiers.py,
+		// TestSpecifier.test_specifiers_invalid's case list.
+		// Pinned: see UpstreamPackagingSHA (L55-L102 at that commit). Upstream's
+		// own list has since grown (pre/post/dev-tagged prefix-matching cases,
+		// non-ASCII local-segment cases) beyond what this file ports.
+		// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/tests/test_specifiers.py#L55-L102
 		// Operator-less specifier
 		{"2.0", false}, // go-pep-440-version permits this case
 
@@ -95,7 +112,9 @@ func TestNewRSpecifiers(t *testing.T) {
 		constraint string
 		wantErr    bool
 	}{
-		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L31-L42
+		// Ported from pypa/packaging tests/test_specifiers.py, module-level SPECIFIERS.
+		// Pinned: see UpstreamPackagingSHA (L33-L43 at that commit).
+		// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/tests/test_specifiers.py#L33-L43
 		{"~=2.0", false},
 		{"==2.1.*", false},
 		{"==2.1.0.3", false},
@@ -108,7 +127,12 @@ func TestNewRSpecifiers(t *testing.T) {
 
 		{"===lolwat", false},
 
-		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L50-L86
+		// Ported from pypa/packaging tests/test_specifiers.py,
+		// TestSpecifier.test_specifiers_invalid's case list.
+		// Pinned: see UpstreamPackagingSHA (L55-L102 at that commit). Upstream's
+		// own list has since grown (pre/post/dev-tagged prefix-matching cases,
+		// non-ASCII local-segment cases) beyond what this file ports.
+		// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/tests/test_specifiers.py#L55-L102
 		// Operator-less specifier
 		{"2.0", false}, // go-pep-440-version permits this case
 

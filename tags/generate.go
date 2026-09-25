@@ -1,4 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/tags.py's
+// cpython_tags, generic_tags, compatible_tags, sys_tags, _cpython_abis,
+// mac_platforms and _mac_binary_formats, and packaging/_manylinux.py's and
+// packaging/_musllinux.py's platform_tags (including _manylinux.py's
+// _LAST_GLIBC_MINOR placeholder value), used under the Apache License,
+// Version 2.0 (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full
+// license and copyright detail).
+//
+// The manylinuxFloor table began as Astral uv's (https://github.com/astral-sh/uv)
+// uv-platform-tags crate floor table, used under the Apache License, Version
+// 2.0 (uv workspace dual-licensed Apache-2.0 OR MIT; see NOTICE).
+//
+// Changed: translated from Python to Go. Fixed to a declared Target rather
+// than the running interpreter/host, so there is no live introspection of
+// Py_UNICODE_SIZE, EXT_SUFFIX, or uname -- cpythonExactABI's UCS-4 handling
+// and implABI's PyPy suffix are answered from Target fields instead. Returns
+// Tag structs and Go errors instead of Python lists/exceptions. manylinuxFloor
+// widens uv's riscv64 (2.31) and loongarch64 (2.36) floors to pypa/packaging's
+// 2.17 and restores their manylinux2014 legacy alias, which uv's table omits
+// (see the comment above manylinuxFloor for why). linuxPlatformTags adds a
+// bare "linux_<arch>" fallback tag that pypa/packaging does not emit.
 package tags
 
 import (
@@ -407,7 +430,8 @@ func linuxPlatformTags(t Target) []string {
 //
 // Copying the placeholder rather than inventing our own means we inherit
 // upstream's correction when glibc 3 actually ships. Upstream pinned at
-// 6ce6143ac8eebd91b7b0d38e92618f0702e933af (packaging 26.2).
+// commit 84a87ee42483d7352f9502d78a9553da8859aa7a (the release 26.2 tag's
+// commit).
 const lastGlibcMinor = 50
 
 // glibcVersion is a (major, minor) glibc version used while building the

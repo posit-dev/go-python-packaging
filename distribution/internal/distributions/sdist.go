@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/twine
+// (https://github.com/pypa/twine), Copyright (c) 2013 Donald Stufft and
+// individual contributors and Copyright (c) 2015 Ian Cordasco, specifically
+// its SDist class's read() logic that picks the shortest PKG-INFO path
+// containing a "Metadata-Version" line, used under the Apache License,
+// Version 2.0. See NOTICE for full license and copyright detail.
+// Changed: translated from Python to Go; archive reading goes through this
+// package's own archiver.ArchiveReader abstraction instead of Python's
+// tarfile/zipfile.
 
 package distributions
 

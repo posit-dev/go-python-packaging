@@ -1,4 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically packaging/markers.py's
+// _eval_op and its operator/specifier dispatch (including
+// MARKERS_REQUIRING_VERSION, reflected below as versionTypedVars), used
+// under the Apache License, Version 2.0 (dual-licensed Apache-2.0 OR
+// BSD-2-Clause; see NOTICE for full license and copyright detail).
+// Changed: translated from Python to Go; an unresolvable comparison records
+// an Undecidable value instead of raising UndefinedEnvironmentName, and
+// version-typed comparisons delegate to package version instead of
+// packaging.specifiers.
 
 package marker
 

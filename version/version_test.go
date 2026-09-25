@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically tests/test_version.py's
+// TestVersion.test_valid_versions and test_invalid_versions (the VERSIONS
+// case list and the invalid-version case list), used under the Apache
+// License, Version 2.0 (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE
+// for full license and copyright detail).
+// Changed: translated from Python/pytest to Go table-driven tests.
 
 package version_test
 
@@ -72,7 +80,9 @@ var (
 	}
 )
 
-// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/tests/test_version.py#L85-L87
+// Ported from pypa/packaging tests/test_version.py, TestVersion.test_valid_versions.
+// Pinned: see version.UpstreamPackagingSHA (L175-L177 at that commit).
+// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/tests/test_version.py#L175-L177
 func TestParseValidVersion(t *testing.T) {
 	for _, v := range versions {
 		t.Run(v, func(t *testing.T) {
@@ -82,7 +92,12 @@ func TestParseValidVersion(t *testing.T) {
 	}
 }
 
-// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/tests/test_version.py#L102-L104
+// Ported from pypa/packaging tests/test_version.py, TestVersion.test_invalid_versions.
+// Pinned: see version.UpstreamPackagingSHA (L215-L217 at that commit).
+// Upstream's own list has since grown (spaces, non-ASCII digits, fast-path
+// cases) beyond what this file ports; see version_test package doc for the
+// curated subset.
+// https://github.com/pypa/packaging/blob/4eb0753dba8fcaaac8eb75463374e448f0931558/tests/test_version.py#L215-L217
 func TestParseInvalidVersion(t *testing.T) {
 	versions := []string{
 		// Non sensical versions should be invalid

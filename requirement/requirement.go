@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically
+// packaging/requirements.py's Requirement.__str__ rendering rule (the
+// " ; " vs "; " marker separator, chosen so a bare ";" is never ambiguous
+// with a ";" inside a URL), used under the Apache License, Version 2.0
+// (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and
+// copyright detail).
+// Changed: translated from Python to Go; Parse itself is original glue over
+// the already-attributed internal/pep508 parser rather than a further port.
 
 package requirement
 

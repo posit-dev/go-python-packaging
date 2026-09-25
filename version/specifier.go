@@ -1,4 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/packaging
+// (https://github.com/pypa/packaging), specifically
+// src/packaging/specifiers.py's _version_split, _version_join,
+// _is_not_suffix, _numeric_prefix_len, _left_pad, and the bodies of
+// Specifier._compare_equal, _compare_compatible, _compare_less_than and
+// _compare_greater_than, used under the Apache License, Version 2.0
+// (dual-licensed Apache-2.0 OR BSD-2-Clause; see NOTICE for full license and
+// copyright detail). Each ported function below carries its own upstream
+// citation and, where behavior diverges, the reason.
+// Changed: translated from Python to Go; error returns replace Python's
+// exceptions/None-returns, and versionSplit/leftPad operate on string slices
+// instead of upstream's list-comprehension-built lists.
 
 package version
 

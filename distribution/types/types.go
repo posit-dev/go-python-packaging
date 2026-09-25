@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/twine
+// (https://github.com/pypa/twine), Copyright (c) 2013 Donald Stufft and
+// individual contributors and Copyright (c) 2015 Ian Cordasco, specifically
+// the package-file metadata dictionary its upload command builds for a
+// multipart request (PackageFile and MetadataMap below), used under the
+// Apache License, Version 2.0. See NOTICE for full license and copyright
+// detail.
+// Changed: translated from Python to Go; PackageFile is a typed struct
+// rather than a dict, with json tags standing in for twine's dict keys.
 
 package types
 

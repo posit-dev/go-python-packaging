@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pip
+// (https://github.com/pypa/pip), specifically the POSIX-mode
+// shlex.split(line, comments=False, posix=True) behavior pip's
+// pip/_internal/req/req_file.py relies on for a requirements-file line,
+// used under the MIT license; see NOTICE for full license and copyright
+// detail.
+// Changed: reimplemented Python's shlex POSIX-mode splitting rules directly
+// in Go, since Go has no shlex equivalent in its standard library.
 
 package reqtxt
 

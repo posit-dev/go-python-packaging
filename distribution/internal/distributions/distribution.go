@@ -1,4 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from the Python `pkginfo` package
+// (Copyright (c) 2009 Agendaless Consulting, Inc. and Contributors; see
+// NOTICE), specifically pkginfo/distribution.py's per-metadata-version
+// header attribute tables (HeaderAttrs1_0 through HeaderAttrs2_4) and its
+// header-parsing and leading-whitespace-collapsing logic, used under the MIT
+// license.
+//
+// The SafeName function is ported from pypa/twine
+// (https://github.com/pypa/twine), Copyright (c) 2013 Donald Stufft and
+// individual contributors and Copyright (c) 2015 Ian Cordasco, specifically
+// its port of pkg_resources.safe_name (see
+// https://github.com/pypa/twine/issues/743), used under the Apache License,
+// Version 2.0. See NOTICE for full license and copyright detail for both.
+//
+// Changed: translated from Python to Go. Parse returns a Go error instead
+// of raising; collapseLeadingWS operates on Go strings rather than Python's
+// email.message header folding.
 
 package distributions
 

@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pip
+// (https://github.com/pypa/pip), specifically the include-following of
+// pip/_internal/req/req_file.py's RequirementsFileParser._parse_and_recurse,
+// used under the MIT license; see NOTICE for full license and copyright
+// detail.
+// Changed: translated from Python's recursive parser-instance walk into an
+// explicit Go recursion building a single flattened File value; the
+// nested_constraint propagation rule is reproduced as a plain bool parameter.
 
 package reqtxt
 

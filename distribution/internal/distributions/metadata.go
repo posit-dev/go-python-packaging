@@ -1,4 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pypa/twine
+// (https://github.com/pypa/twine), Copyright (c) 2013 Donald Stufft and
+// individual contributors and Copyright (c) 2015 Ian Cordasco, specifically
+// its DIST_EXTENSIONS mapping and distribution-type/Python-version guessing
+// logic (DistExtensions and NewDistributionMetadata below), used under the
+// Apache License, Version 2.0. See NOTICE for full license and copyright
+// detail.
+// Changed: translated from Python to Go; returns a Go error instead of
+// raising. getFullExtension is a local helper with no twine counterpart,
+// needed because Go has no os.path.splitext equivalent for multi-dot
+// extensions like ".tar.gz".
 
 package distributions
 

@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+//
+// Portions of this file are ported from pip
+// (https://github.com/pypa/pip), specifically pip/_internal/utils/misc.py's
+// is_url and is_archive_file, and the VCS scheme registration in
+// pip/_internal/vcs/{git,mercurial,subversion,bazaar}.py, used under the MIT
+// license; see NOTICE for full license and copyright detail.
+// Changed: translated from Python to Go as a pure, shape-only string
+// classifier that never touches the filesystem, unlike pip's originals.
 
 package reqtxt
 

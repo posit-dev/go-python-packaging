@@ -9,10 +9,35 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-25
+
+### Breaking
+
+- `marker`, `requirement`, `reqtxt`: **marker string literals now decode Python
+  escape sequences, and malformed escapes are rejected.** `"line\nbreak"` compares
+  as a real newline, not a backslash and `n`, matching `pypa/packaging`. A truncated
+  `\u`/`\U`, a `\U` above U+10FFFF, or an octal `\8`/`\9` is now a parse error
+  where it used to be accepted. (#58, rstudio/package-manager#19401)
+
+### Added
+
+- `version`: `UpstreamPackagingSHA` names the one pypa/packaging commit that every
+  ported-code citation in this module is pinned to. (#60)
+
 ### Fixed
 
+- `requirement`: in `name @ url`, the URL now ends at a space or tab only, matching
+  `pypa/packaging`. A bare trailing line break is kept in the URL rather than
+  handled by a special case. (#59, rstudio/package-manager#19402)
 - `distribution`: `NewArchiveReader` no longer leaks an open file when a
   `.tar.gz` holds no readable tar header.
+
+### Notes
+
+- `NOTICE`: uv-pep508 is credited as Apache-2.0 OR BSD-2-Clause (Copyright (c) 2023
+  konstin), not Apache-2.0 OR MIT, and the Aqua Security copyright for `version/`
+  is now included. Source files now carry provenance headers. There is no code
+  change. (#60, rstudio/package-manager#19394, rstudio/package-manager#19395)
 
 ## [0.10.0] - 2026-09-18
 

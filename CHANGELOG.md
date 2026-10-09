@@ -9,6 +9,17 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- `distribution`: Metadata 2.5 (PEP 794) and 2.6 (PEP 808) are now recognized.
+  Metadata 2.5 adds `Import-Name` and `Import-Namespace` fields; 2.6 has no new
+  fields (behavior change for `Dynamic` only).
+
+### Fixed
+
+- `distribution`: `License-File` is now parsed as a multi-value field, matching
+  the PEP 639 spec. Previously it was incorrectly treated as single-value.
+
 ## [0.11.0] - 2026-09-25
 
 ### Breaking

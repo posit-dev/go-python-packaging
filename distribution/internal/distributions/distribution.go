@@ -141,8 +141,15 @@ var HeaderAttrs2_3 = HeaderAttrs2_2 // PEP 685
 
 var HeaderAttrs2_4 = append(HeaderAttrs2_3, []HeaderAttr{ // PEP 639
 	{"License-Expression", "license_expression", false},
-	{"License-File", "license_file", false},
+	{"License-File", "license_files", true},
 }...)
+
+var HeaderAttrs2_5 = append(HeaderAttrs2_4, []HeaderAttr{ // PEP 794
+	{"Import-Name", "import_names", true},
+	{"Import-Namespace", "import_namespaces", true},
+}...)
+
+var HeaderAttrs2_6 = HeaderAttrs2_5 // PEP 808 (no new fields, behavior change for Dynamic)
 
 var HeaderAttrs = map[string][]HeaderAttr{
 	"1.0": HeaderAttrs1_0,
@@ -153,6 +160,8 @@ var HeaderAttrs = map[string][]HeaderAttr{
 	"2.2": HeaderAttrs2_2,
 	"2.3": HeaderAttrs2_3,
 	"2.4": HeaderAttrs2_4,
+	"2.5": HeaderAttrs2_5,
+	"2.6": HeaderAttrs2_6,
 }
 
 type Distribution interface {
@@ -205,8 +214,11 @@ type BaseDistribution struct {
 	// version 2.2
 	Dynamic []string `json:"dynamic"`
 	// version 2.4
-	LicenseExpression string `json:"license_expression"`
-	LicenseFile       string `json:"license_file"`
+	LicenseExpression string   `json:"license_expression"`
+	LicenseFiles      []string `json:"license_files"`
+	// version 2.5
+	ImportNames      []string `json:"import_names"`
+	ImportNamespaces []string `json:"import_namespaces"`
 }
 
 func (bd *BaseDistribution) GetHeaderAttrs() ([]HeaderAttr, error) {

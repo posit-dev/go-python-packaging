@@ -168,7 +168,7 @@ func TestParse_WheelMultiValueFields(t *testing.T) {
 		"provides_extra":     {"extra-one", "extra-two"},
 		"project_urls":       {"Homepage, https://example.invalid/gppfixture-alpha", "Source, https://example.invalid/gppfixture-alpha/src"},
 		"license_expression": {"MIT"},
-		"license_file":       {"LICENSE.txt"},
+		"license_files":      {"LICENSE.txt"},
 		"dynamic":            {"requires-dist", "license-file"},
 		"description":        {body},
 		"filetype":           {"bdist_wheel"},
@@ -396,4 +396,57 @@ func TestParse_DirectoryExpansionWheelFirst(t *testing.T) {
 	require.NotEqual(t, -1, wheelIdx, "wheel not found in results")
 	require.NotEqual(t, -1, sdistIdx, "sdist not found in results")
 	assert.Less(t, wheelIdx, sdistIdx, "every wheel must come before every sdist")
+}
+
+// TestParse_WheelMetadata25 verifies parsing of Metadata-Version 2.5 (PEP 794)
+// with Import-Name and Import-Namespace fields.
+func TestParse_WheelMetadata25(t *testing.T) {
+	dir := t.TempDir()
+	wheelPath := filepath.Join(dir, "gppfixture_eta-1.0.0-py3-none-any.whl")
+
+	header := strings.Join([]string{
+		"Metadata-Version: 2.5",
+		"Name: gppfixture-eta",
+		"Version: 1.0.0",
+		"Import-Name: gppfixture_eta",
+		"Import-Name: gppfixture_eta.submodule",
+		"Import-Namespace: gppfixture_shared",
+	}, "\n")
+	body := "Fixture eta description.\n"
+	metadata := header + "\n\n" + body
+
+	writeWheelFixture(t, wheelPath, []fixtureEntry{
+		{name: "gppfixture_eta-1.0.0.dist-info/METADATA", contents: metadata},
+		{name: "gppfixture_eta-1.0.0.dist-info/WHEEL", contents: "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"},
+		{name: "gppfixture_eta-1.0.0.dist-info/RECORD", contents: ""},
+	})
+
+	sha2, blake2 := fileDigests(t, wheelPath)
+
+	packages, err := distribution.Parse(wheelPath)
+	require.NoError(t, err)
+	require.Len(t, packages, 1)
+	pkg := packages[0]
+
+	assert.Equal(t, "gppfixture_eta-1.0.0-py3-none-any.whl", pkg.BaseFilename)
+	assert.Equal(t, sha2, pkg.SHA2Digest)
+	assert.Equal(t, blake2, pkg.Blake2_256Digest)
+
+	got := pkg.MetadataMap()
+
+	want := map[string][]string{
+		":action":           {"file_upload"},
+		"protocol_version":  {"1"},
+		"name":              {"gppfixture-eta"},
+		"metadata_version":  {"2.5"},
+		"version":           {"1.0.0"},
+		"import_names":      {"gppfixture_eta", "gppfixture_eta.submodule"},
+		"import_namespaces": {"gppfixture_shared"},
+		"description":       {body},
+		"filetype":          {"bdist_wheel"},
+		"pyversion":         {"py3"},
+		"sha256_digest":     {sha2},
+		"blake2_256_digest": {blake2},
+	}
+	assert.Equal(t, want, got)
 }

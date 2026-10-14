@@ -332,11 +332,11 @@ func StructToMap(input interface{}) map[string][]string {
 	result := make(map[string][]string)
 
 	v := reflect.ValueOf(input)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	t := reflect.TypeOf(input)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

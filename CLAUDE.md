@@ -32,7 +32,7 @@ go test ./...
 go vet ./...
 ```
 
-Module floor is **Go 1.25** (conservative for a public library; PPM consumes it fine at 1.26).
+Module floor is **Go 1.27.2**; downstream consumers (including PPM) must be on Go ≥ 1.27.2.
 
 ## Property tests (`internal/proptest/`)
 
@@ -78,7 +78,7 @@ reproducible from the printed output.
 ### Verify lint matches CI before claiming "lint clean"
 
 CI runs `golangci-lint` via `golangci/golangci-lint-action@v9` (pinned to golangci-lint
-**v2.11.2**). Reproduce it exactly from the repo root:
+**v2.14.0**). Reproduce it exactly from the repo root:
 
 ```bash
 golangci-lint config verify   # config must load (see the v2 note below)

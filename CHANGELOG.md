@@ -9,6 +9,12 @@ mistaken for a safe patch upgrade.
 
 ## [Unreleased]
 
+### Breaking
+
+- The module now requires **Go 1.27.2** (was 1.25). Consumers on an older Go
+  toolchain must upgrade, and `go mod tidy` will raise their own `go` directive
+  to at least 1.27.2.
+
 ### Added
 
 - `distribution`: Metadata 2.5 (PEP 794) and 2.6 (PEP 808) are now recognized.

@@ -17,12 +17,21 @@ mistaken for a safe patch upgrade.
 
 ### Added
 
+- `packagename`: new package with `Normalize`, the PEP 503 entry point for
+  project-name normalization. It returns exactly what `extras.Normalize`
+  returns; both now delegate to one shared internal implementation. (#25)
 - `distribution`: Metadata 2.5 (PEP 794) and 2.6 (PEP 808) are now recognized.
   Metadata 2.5 adds `Import-Name` and `Import-Namespace` fields; 2.6 has no new
   fields (behavior change for `Dynamic` only).
 
 ### Fixed
 
+- `extras`: `Normalize` now lowercases non-ASCII letters the way Python's
+  `str.lower()` does, matching pypa/packaging's `canonicalize_name`: `Ä`
+  becomes `ä`, `İ` becomes `i` plus U+0307, and `Σ` becomes `ς` at the end
+  of a word. Previously only ASCII letters were lowercased. Bytes that are not
+  valid UTF-8 now pass through unchanged; previously each was replaced with
+  U+FFFD. Valid PEP 508 names are ASCII, so their results do not change. (#25)
 - `distribution`: `License-File` is now parsed as a multi-value field, matching
   the PEP 639 spec. Previously it was incorrectly treated as single-value.
 

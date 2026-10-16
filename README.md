@@ -16,6 +16,7 @@ Part of [RFD 0001 — Native Go PyPI Dependency Resolution](https://github.com/r
 | `requirement/` | PEP 508 dependency specifiers (implemented) |
 | `marker/` | PEP 508 environment markers (implemented) |
 | `extras/` | PEP 685 extra-name normalization (implemented) |
+| `packagename/` | PEP 503 project-name normalization (implemented) |
 | `reqtxt/` | pip `requirements.txt` format (implemented) |
 | [`distribution/`](https://github.com/rstudio/python-distribution-parser) | METADATA / wheel parsing |
 | `wheelname/` | PEP 427 wheel filename → name/version/build/tags (implemented) |

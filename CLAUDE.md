@@ -19,6 +19,7 @@ One module, one package per PEP concern (single import path for downstream conve
 | `requirement/` | PEP 508 dependency specifiers |
 | `marker/` | PEP 508 environment markers |
 | `extras/` | PEP 685 extra-name normalization |
+| `packagename/` | PEP 503 project-name normalization |
 | `reqtxt/` | pip `requirements.txt` format |
 | `distribution/` | METADATA / wheel parsing *(added by migration #18630)* |
 | `wheelname/` | wheel filename → structured fields |

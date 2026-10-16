@@ -192,6 +192,18 @@ func TestNormalizeFastPathDoesNotAllocate(t *testing.T) {
 	}
 }
 
+// The input longer than 32 bytes is load-bearing: the compiler stack-allocates
+// a small make([]byte, 0, n), so only longer names would expose a second
+// allocation from a []byte buffer plus string(b).
+func TestNormalizeSlowPathAllocatesOnce(t *testing.T) {
+	for _, in := range []string{"Django", "zope.interface", "Foo__Bar", "ΑΣ.Β", "İstanbul", "Zope.Interface.Long_Project_Name.Example"} {
+		allocs := testing.AllocsPerRun(100, func() { _ = Normalize(in) })
+		if allocs != 1 {
+			t.Errorf("Normalize(%q) allocated %v times, want 1", in, allocs)
+		}
+	}
+}
+
 // pep503Separators is the separator regex from PEP 503's normalization rule.
 var pep503Separators = regexp.MustCompile(`[-_.]+`)
 

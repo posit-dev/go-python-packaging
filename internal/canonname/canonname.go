@@ -23,6 +23,7 @@
 package canonname
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -54,7 +55,10 @@ func Normalize(name string) string {
 		return name
 	}
 
-	b := make([]byte, 0, len(name)+1)
+	// strings.Builder, not a []byte plus string(b): String() does not copy,
+	// so the slow path allocates once.
+	var b strings.Builder
+	b.Grow(len(name) + 1)
 	inSep := false
 	for i := 0; i < len(name); {
 		c := name[i]
@@ -62,7 +66,7 @@ func Normalize(name string) string {
 			switch c {
 			case '-', '_', '.':
 				if !inSep {
-					b = append(b, '-')
+					b.WriteByte('-')
 					inSep = true
 				}
 			default:
@@ -70,7 +74,7 @@ func Normalize(name string) string {
 				if 'A' <= c && c <= 'Z' {
 					c += 'a' - 'A'
 				}
-				b = append(b, c)
+				b.WriteByte(c)
 			}
 			i++
 			continue
@@ -82,21 +86,21 @@ func Normalize(name string) string {
 		r, size := utf8.DecodeRuneInString(name[i:])
 		switch {
 		case r == utf8.RuneError && size == 1:
-			b = append(b, c) // invalid UTF-8: copy the byte unchanged
+			b.WriteByte(c) // invalid UTF-8: copy the byte unchanged
 		case r == capitalDottedI:
-			b = append(b, "i̇"...)
+			b.WriteString("i̇")
 		case r == capitalSigma:
 			if finalSigma(name, i, i+size) {
-				b = utf8.AppendRune(b, finalSmallSig)
+				b.WriteRune(finalSmallSig)
 			} else {
-				b = utf8.AppendRune(b, smallSigma)
+				b.WriteRune(smallSigma)
 			}
 		default:
-			b = utf8.AppendRune(b, unicode.ToLower(r))
+			b.WriteRune(unicode.ToLower(r))
 		}
 		i += size
 	}
-	return string(b)
+	return b.String()
 }
 
 // isNormalized reports whether Normalize(name) == name: name has no "_" or

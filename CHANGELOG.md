@@ -14,15 +14,30 @@ mistaken for a safe patch upgrade.
 - The module now requires **Go 1.27.2** (was 1.25). Consumers on an older Go
   toolchain must upgrade, and `go mod tidy` will raise their own `go` directive
   to at least 1.27.2.
+- `marker`, `requirement`, `reqtxt`: **non-ASCII `extra` marker literals now
+  normalize like Python's `str.lower()`** (see the `extras` entry under
+  `Fixed`). This changes `String()` output and `Evaluate` results:
+  `extra == "Ä"` now renders as `extra == "ä"`. `extra == "ΑΣ.Β"` no longer
+  matches the active extra `ΑΣ_Β` (`ασ-β` vs `ας-β`). Invalid UTF-8 bytes no
+  longer collapse to U+FFFD, so `"\xff"` no longer matches `"\xfe"`. (#25)
 
 ### Added
 
+- `packagename`: new package with `Normalize`, the PEP 503 entry point for
+  project-name normalization. It returns exactly what `extras.Normalize`
+  returns; both now delegate to one shared internal implementation. (#25)
 - `distribution`: Metadata 2.5 (PEP 794) and 2.6 (PEP 808) are now recognized.
   Metadata 2.5 adds `Import-Name` and `Import-Namespace` fields; 2.6 has no new
   fields (behavior change for `Dynamic` only).
 
 ### Fixed
 
+- `extras`: `Normalize` now lowercases non-ASCII letters the way Python's
+  `str.lower()` does, matching pypa/packaging's `canonicalize_name`: `Ä`
+  becomes `ä`, `İ` becomes `i` plus U+0307, and `Σ` becomes `ς` at the end
+  of a word. Previously only ASCII letters were lowercased. Bytes that are not
+  valid UTF-8 now pass through unchanged; previously each was replaced with
+  U+FFFD. Valid PEP 508 names are ASCII, so their results do not change. (#25)
 - `distribution`: `License-File` is now parsed as a multi-value field, matching
   the PEP 639 spec. Previously it was incorrectly treated as single-value.
 

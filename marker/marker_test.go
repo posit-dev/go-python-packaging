@@ -59,6 +59,14 @@ func TestParse_ExtraNormalization(t *testing.T) {
 	assert.Equal(t, `extra == "foo-bar"`, m.String())
 }
 
+// A marker `extra` literal is an arbitrary quoted string, so non-ASCII text
+// reaches extras.Normalize and is lowercased the way Python's str.lower() does.
+func TestParse_ExtraNormalization_NonASCII(t *testing.T) {
+	m, err := Parse(`extra == "Ä"`)
+	require.NoError(t, err)
+	assert.Equal(t, `extra == "ä"`, m.String())
+}
+
 // --- round trip: Parse(m.String()) is stable ---
 
 func TestParse_RoundTrip(t *testing.T) {

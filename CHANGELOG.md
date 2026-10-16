@@ -14,6 +14,12 @@ mistaken for a safe patch upgrade.
 - The module now requires **Go 1.27.2** (was 1.25). Consumers on an older Go
   toolchain must upgrade, and `go mod tidy` will raise their own `go` directive
   to at least 1.27.2.
+- `marker`, `requirement`, `reqtxt`: **non-ASCII `extra` marker literals now
+  normalize like Python's `str.lower()`** (see the `extras` entry under
+  `Fixed`). This changes `String()` output and `Evaluate` results:
+  `extra == "Ä"` now renders as `extra == "ä"`. `extra == "ΑΣ.Β"` no longer
+  matches the active extra `ΑΣ_Β` (`ασ-β` vs `ας-β`). Invalid UTF-8 bytes no
+  longer collapse to U+FFFD, so `"\xff"` no longer matches `"\xfe"`. (#25)
 
 ### Added
 

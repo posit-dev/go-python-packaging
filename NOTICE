@@ -79,10 +79,11 @@ License, Version 2.0; and from Astral's uv (https://github.com/astral-sh/uv),
 specifically the uv-distribution-filename crate, dual-licensed under the
 Apache License, Version 2.0, or the MIT license.
 
-The extras/ package adapts PEP 685/503 name-canonicalization from
-pypa/packaging (https://github.com/pypa/packaging), specifically
+The internal/canonname package adapts PEP 503/685 name-canonicalization
+from pypa/packaging (https://github.com/pypa/packaging), specifically
 packaging/utils.py's `canonicalize_name`, licensed under the Apache
-License, Version 2.0.
+License, Version 2.0. The extras/ and packagename/ packages expose it as
+thin wrappers.
 
 The internal/pep508 package's tokenizer adapts the lexer design of
 pypa/packaging (https://github.com/pypa/packaging), specifically
@@ -213,7 +214,8 @@ test_canonicalize_name and the non-validating half of
 test_canonicalize_name_invalid, pinned at commit
 4eb0753dba8fcaaac8eb75463374e448f0931558, licensed under the Apache License,
 Version 2.0. Translated from Python/pytest to Go table-driven tests, in
-extras/conformance_test.go.
+extras/conformance_test.go. The test_canonicalize_name cases are ported a
+second time, under the same terms, in packagename/conformance_test.go.
 
 The internal/pep508 package's error-position conformance tests port input
 strings and caret span offsets - not message text - from Astral uv's

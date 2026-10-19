@@ -178,6 +178,11 @@ func TestEvaluate_Extra_SetMembership(t *testing.T) {
 		{"normalization, literal side", `extra == "Foo_Bar"`, []string{"foo-bar"}, true},
 		{"normalization, active side", `extra == "foo-bar"`, []string{"Foo_Bar"}, true},
 		{"normalization, both sides", `extra == "Foo.Bar"`, []string{"foo_bar"}, true},
+		// Non-ASCII literals lowercase as Python's str.lower() does: "ΑΣ.Β"
+		// becomes "ασ-β" but "ΑΣ_Β" becomes "ας-β" (final sigma), so they no
+		// longer match each other.
+		{"normalization, non-ASCII", `extra == "Ä"`, []string{"ä"}, true},
+		{"normalization, final sigma", `extra == "ΑΣ.Β"`, []string{"ΑΣ_Β"}, false},
 		// Only == and != are meaningful for extra set-membership; any other
 		// operator is inapplicable and evaluates false, even when the extra
 		// named on the value side is active.
